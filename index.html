@@ -72,6 +72,13 @@
   <option value="wd:Q3741">Yogyakarta</option>
   <option value="all">Seluruh Indonesia</option>
   <option value="luar_negeri">Luar Negeri...</option>
+    <option value="custom_lokasi">Masukkan Lokasi Sendiri...</option>
+
+<!-- Wadah input yang muncul jika custom dipilih -->
+<div id="wadah-lokasi-custom" style="display: none; margin-top: 10px;">
+  <label style="font-weight: bold;">Q-ID Lokasi:</label>
+  <input type="text" id="lokasi-custom-input" placeholder="Contoh: wd:Qxxx" style="padding: 10px; border-radius: 5px; width: 100%;">
+</div>
 </select>
     <div id="wadah-negara" style="display: none;">
       <label for="negara-input" style="font-weight: bold;">Pilih Negara:</label><br>
