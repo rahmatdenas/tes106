@@ -165,18 +165,41 @@ var currentKategoriUtama = 'general';
 var currentNamaKlaster = 'Objek';     
 var currentNamaWilayah = 'Semua Wilayah'; 
 
-function aturTampilanNegara() {
-  let provInput = document.getElementById('provinsi-input').value;
-  document.getElementById('wadah-negara').style.display = (provInput === 'luar_negeri') ? 'block' : 'none';
-  document.getElementById('wadah-lokasi-custom').style.display = (provInput === 'custom_lokasi') ? 'block' : 'none';
+// Fungsi untuk memunculkan wadah yang sesuai dengan pilihan dropdown utama
+function aturTampilanWilayah() {
+  let regionType = document.getElementById('region-type-dropdown').value;
+  
+  document.getElementById('wadah-indonesia').style.display = (regionType === 'indonesia') ? 'block' : 'none';
+  document.getElementById('wadah-luar-negeri').style.display = (regionType === 'luar_negeri') ? 'block' : 'none';
+  document.getElementById('wadah-lokasi-custom').style.display = (regionType === 'custom_lokasi') ? 'block' : 'none';
+}
+
+// Fungsi untuk menyembunyikan/memunculkan opsi negara berdasarkan benua
+function filterNegaraBerdasarkanBenua() {
+  let benuaTerpilih = document.getElementById('benua-input').value;
+  let opsiNegara = document.getElementById('negara-input').options;
+  
+  let pertamaTerlihat = null;
+  for (let i = 0; i < opsiNegara.length; i++) {
+    let opt = opsiNegara[i];
+    // Tampilkan jika opsi adalah 'all' atau cocok dengan atribut data-benua
+    if (benuaTerpilih === 'all' || opt.getAttribute('data-benua') === benuaTerpilih) {
+      opt.style.display = '';
+      if (!pertamaTerlihat) pertamaTerlihat = opt;
+    } else {
+      opt.style.display = 'none';
+    }
+  }
+  
+  // Pilih otomatis opsi pertama yang terlihat agar UI tidak nyangkut
+  if (pertamaTerlihat) {
+    document.getElementById('negara-input').value = pertamaTerlihat.value;
+  }
 }
 
 function populateProvinceTypesData() {
   let rawInputTxt = document.getElementById('jenis-input').value.trim();
   let inputTxt = rapikanInputQID(rawInputTxt);
-  
-  let provDropdown = document.getElementById('provinsi-input');
-  let provInput = provDropdown.value;
   
   // ==========================================
   // 1. TENTUKAN VARIABEL GLOBAL & WILAYAH DARI HTML
@@ -185,26 +208,31 @@ function populateProvinceTypesData() {
   let opsiTerpilih = jenisDropdown.options[jenisDropdown.selectedIndex];
 
   currentIdKlaster = opsiTerpilih.getAttribute('data-id') || 'universal';
-
-  if (jenisDropdown.value === 'custom') {
-    currentNamaKlaster = 'Objek'; 
-  } else {
-    currentNamaKlaster = opsiTerpilih.text; 
-  }
-
+  currentNamaKlaster = (jenisDropdown.value === 'custom') ? 'Objek' : opsiTerpilih.text; 
   currentKategoriUtama = opsiTerpilih.getAttribute('data-kategori') || 'general';
+  
   let propLokasi = opsiTerpilih.getAttribute('data-lokasi') || 'P131';
   let propTahun = opsiTerpilih.getAttribute('data-tahun') || 'P571';
   
-  if (provInput === 'custom_lokasi') {
+  // LOGIKA PENAMAAN WILAYAH BERDASARKAN DROPDOWN BARU
+  let regionType = document.getElementById('region-type-dropdown').value;
+  let provInput = '';
+
+  if (regionType === 'indonesia') {
+    let provDropdown = document.getElementById('provinsi-input');
+    provInput = provDropdown.value;
+    currentNamaWilayah = provDropdown.options[provDropdown.selectedIndex].text;
+    
+  } else if (regionType === 'luar_negeri') {
+    let negaraDropdown = document.getElementById('negara-input');
+    // Langsung rapikan input dari dropdown negara
+    provInput = rapikanInputQID(negaraDropdown.value); 
+    currentNamaWilayah = negaraDropdown.options[negaraDropdown.selectedIndex].text;
+    
+  } else if (regionType === 'custom_lokasi') {
     let rawLokasi = document.getElementById('lokasi-custom-input').value.trim();
     provInput = rapikanInputQID(rawLokasi);
     currentNamaWilayah = "Lokasi Kustom";
-  } else if (provInput === 'luar_negeri') {
-    let negaraDropdown = document.getElementById('negara-input');
-    currentNamaWilayah = negaraDropdown.options[negaraDropdown.selectedIndex].text;
-  } else {
-    currentNamaWilayah = provDropdown.options[provDropdown.selectedIndex].text;
   }
   
   // ==========================================
@@ -298,10 +326,9 @@ function populateProvinceTypesData() {
     filterNasional = '?s wdt:P407 wd:Q9240 .'; 
   }
 
-  // --- CABANG LUAR NEGERI ---
-  if (provDropdown.value === 'luar_negeri') {
-    let negaraDropdown = document.getElementById('negara-input');
-    let negaraValue = rapikanInputQID(negaraDropdown.value);
+// --- CABANG LUAR NEGERI ---
+  if (regionType === 'luar_negeri') {
+    let negaraValue = provInput; 
     
     baseQuery = KUMPULAN_KUERI_0['luar_negeri'];
     let dynamicQuery = baseQuery;
