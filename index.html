@@ -289,120 +289,81 @@
     <label for="jenis-dropdown" style="font-weight: bold;">Pilih Kategori Data:</label>
     
 <select id="jenis-dropdown" style="padding: 10px; border-radius: 5px; border: 1px solid #ccc;">
-      <option disabled selected style="font-weight: bold; color: black;" value="wd:">Contoh</option>
-      <option value="wd:Q3199141 wd:Q3191695">Kabupaten & kota</option>
-      <option value="wd:Q5" data-lokasi="P19" data-tahun="P569">Tempat lahir tokoh</option>
+  <option disabled selected style="font-weight: bold; color: black;" value="wd:">Contoh</option>
+  <option value="wd:Q3199141 wd:Q3191695" data-id="wilayah_admin">Kabupaten & kota</option>
+  <option value="wd:Q5" data-lokasi="P19" data-tahun="P569" data-id="tokoh">Tempat lahir tokoh</option>
 
-      <option disabled style="font-weight: bold; color: black;">Budaya</option>
-      <option value="wd:Q34770" data-kategori="alam" data-lokasi="P2341">Bahasa</option>
-      <option value="wd:Q36192" data-kategori="alam" data-lokasi="P276">Budaya rakyat</option>
-      <option value="wd:Q19861951 wd:Q746549 wd:Q2095 wd:Q8195619" data-kategori="alam" data-lokasi="P276">Hidangan</option>
-      <option value="wd:Q11460 wd:Q3172759 wd:Q28823" data-kategori="alam" data-lokasi="P276">Pakaian</option>
-      <option value="wd:Q189819 wd:Q2627975" data-kategori="alam" data-lokasi="P276">Ritual dan upacara</option>
-      <option value="wd:Q107357104 wd:Q184485" data-kategori="alam" data-lokasi="P276">Tari dan pertunjukan</option>
-      
-      <option disabled style="font-weight: bold; color: black;">Tempat ibadah</option>
-      <option value="wd:Q32815 wd:Q56235676 wd:Q56235673 wd:Q1454820">Masjid</option>
-      <option value="wd:Q16970 wd:Q2977 wd:Q56242215">Gereja & katedral</option>
-      <option value="wd:Q44539 wd:Q2736554 wd:Q842402 wd:Q3124902">Kuil & candi</option>
-      <option value="wd:Q5393308 wd:Q2680845">Vihara & kelenteng</option>
-      
-      <option value="wd:Q11032 wd:Q41298" data-lokasi="P291" data-tahun="P577">Media massa</option>
-      <option value="wd:Q33506">Museum</option>
-      
-      <option disabled style="font-weight: bold; color: black;">Peninggalan sejarah</option>
-      <option value="wd:Q220659 wd:Q860861 wd:Q193475" data-lokasi="P276">Artefak</option>
-      <option value="wd:Q57821 wd:Q1785071 wd:Q91122">Benteng dan bunker</option>
-      <option value="wd:Q178743 wd:Q860861">Prasasti</option>
-      <option value="wd:Q839954 wd:Q193475">Situs arkeologi lainnya</option>
-      <option value="wd:Q4989906 wd:Q321053 wd:Q179700 wd:Q170980 wd:Q5003624">Monumen, patung, & memorial</option>
-      <option value="wd:Q137894610 wd:Q35112127 wd:Q4246737 wd:Q19860854 wd:Q109607">Bangunan bersejarah lainnya</option>
-      <option value="wd:Q41176 wd:Q811979">Bangunan secara umum dan struktur arsitektur</option>
-      
-      <option disabled style="font-weight: bold; color: black;">Bangunan/tempat</option>
-      <option value="wd:Q27686 wd:Q875157">Hotel dan resor</option>
-      <option value="wd:Q16560 wd:Q481289">Istana</option>
-      <option value="wd:Q43501 wd:Q167346" data-kategori="alam">Kebun binatang & tanaman</option>
-      <option value="wd:Q570116" data-kategori="alam">Objek wisata</option>
-      <option value="wd:Q330284 wd:Q11315">Pasar dan mall</option>
-      <option value="wd:Q7075">Perpustakaan</option>
-      <option value="wd:Q22746 wd:Q174782" data-kategori="alam">Ruang terbuka hijau</option>
-      <option value="wd:Q16917">Rumah sakit</option>
-      <option value="wd:Q483110 wd:Q2310214">Stadion & lapangan olahraga</option>
-      <option value="wd:Q3918 wd:Q38723">Universitas & kampus</option>
-      
-      <option disabled style="font-weight: bold; color: black;">Transportasi</option>
-      <option value="wd:Q1248784">Bandar udara</option>
-      <option value="wd:Q44782">Pelabuhan</option>
-      <option value="wd:Q55488">Stasiun kereta api</option>
-      <option value="wd:Q494829">Terminal bus</option>
-      
-      <option disabled style="font-weight: bold; color: black;">Bentang alam</option>  
-      <option value="wd:Q34038" data-kategori="alam">Air terjun</option>
-      <option value="wd:Q179049" data-kategori="alam">Cagar alam</option>
-      <option value="wd:Q23397 wd:Q204324 wd:Q159954" data-kategori="alam">Danau & kaldera</option>   
-      <option value="wd:Q35509" data-kategori="alam">Gua</option>
-      <option value="wd:Q8502" data-kategori="alam">Gunung</option>
-      <option value="wd:Q40080" data-kategori="alam">Pantai</option>
-      <option value="wd:Q23442" data-kategori="alam">Pulau</option>
-      <option value="wd:Q131681 wd:Q12323" data-kategori="alam">Waduk, bendungan, & embung</option>
-      
-      <option disabled style="font-weight: bold; color: black;">Objek lainnya (data masih sedikit)</option>
-      <option value="wd:Q7944 wd:Q8070" data-lokasi="P276" data-tahun="P585">Gempa bumi dan tsunami</option>
-      <option value="wd:Q8065 wd:Q3839081 wd:Q7692360 wd:Q8068" data-lokasi="P276" data-tahun="P585">Bencana lainnya</option>
-      <option value="wd:Q1323212 wd:Q3199915 wd:Q198 wd:Q645883 wd:Q831663 wd:Q180684 wd:Q178561 wd:Q1261499" data-lokasi="P276" data-tahun="P585">Perang & konflik</option>
-      <option value="wd:Q1190554" data-lokasi="P276" data-tahun="P585">Peristiwa lainnya</option>
-      <option value="wd:Q7725634" data-lokasi="P840" data-tahun="P577">Latar karya sastra</option>
-      <option value="wd:Q3305213" data-lokasi="P276" data-tahun="P571">Lukisan</option>
-      <option value="wd:Q1641020" data-lokasi="P276">Lontar</option>
-      <option value="wd:Q87167" data-lokasi="P276">Naskah</option>
-      <option value="wd:Q47461344 wd:Q7725634" data-lokasi="P291" data-tahun="P577">Publikasi</option>
-      <option value="apapun">Semua Jenis Objek</option>
+  <option disabled style="font-weight: bold; color: black;">Budaya</option>
+  <option value="wd:Q34770" data-kategori="alam" data-lokasi="P2341" data-id="bahasa">Bahasa</option>
+  <option value="wd:Q36192" data-kategori="alam" data-lokasi="P276" data-id="budaya_rakyat">Budaya rakyat</option>
+  <option value="wd:Q19861951 wd:Q746549 wd:Q2095 wd:Q8195619" data-kategori="alam" data-lokasi="P276" data-id="hidangan">Hidangan</option>
+  <option value="wd:Q11460 wd:Q3172759 wd:Q28823" data-kategori="alam" data-lokasi="P276" data-id="pakaian">Pakaian</option>
+  <option value="wd:Q189819 wd:Q2627975" data-kategori="alam" data-lokasi="P276" data-id="ritual">Ritual dan upacara</option>
+  <option value="wd:Q107357104 wd:Q184485" data-kategori="alam" data-lokasi="P276" data-id="tari">Tari dan pertunjukan</option>
+  
+  <option disabled style="font-weight: bold; color: black;">Tempat ibadah</option>
+  <option value="wd:Q32815 wd:Q56235676 wd:Q56235673 wd:Q1454820" data-id="bangunan">Masjid</option>
+  <option value="wd:Q16970 wd:Q2977 wd:Q56242215" data-id="bangunan">Gereja & katedral</option>
+  <option value="wd:Q44539 wd:Q2736554 wd:Q842402 wd:Q3124902" data-id="bangunan">Kuil & candi</option>
+  <option value="wd:Q5393308 wd:Q2680845" data-id="bangunan">Vihara & kelenteng</option>
+  
+  <option value="wd:Q11032 wd:Q41298" data-lokasi="P291" data-tahun="P577" data-id="media_massa">Media massa</option>
+  <option value="wd:Q33506" data-id="museum">Museum</option>
+  
+  <option disabled style="font-weight: bold; color: black;">Peninggalan sejarah</option>
+  <option value="wd:Q220659 wd:Q860861 wd:Q193475" data-lokasi="P276" data-id="artefak">Artefak</option>
+  <option value="wd:Q57821 wd:Q1785071 wd:Q91122" data-id="bangunan">Benteng dan bunker</option>
+  <option value="wd:Q178743 wd:Q860861" data-id="prasasti">Prasasti</option>
+  <option value="wd:Q839954 wd:Q193475" data-id="situs_arkeologi">Situs arkeologi lainnya</option>
+  <option value="wd:Q4989906 wd:Q321053 wd:Q179700 wd:Q170980 wd:Q5003624" data-id="bangunan">Monumen, patung, & memorial</option>
+  <option value="wd:Q137894610 wd:Q35112127 wd:Q4246737 wd:Q19860854 wd:Q109607" data-id="bangunan">Bangunan bersejarah lainnya</option>
+  <option value="wd:Q41176 wd:Q811979" data-id="bangunan">Bangunan secara umum dan struktur arsitektur</option>
+  
+  <option disabled style="font-weight: bold; color: black;">Bangunan/tempat</option>
+  <option value="wd:Q27686 wd:Q875157" data-id="bangunan">Hotel dan resor</option>
+  <option value="wd:Q16560 wd:Q481289" data-id="bangunan">Istana</option>
+  <option value="wd:Q43501 wd:Q167346" data-kategori="alam" data-id="bangunan">Kebun binatang & tanaman</option>
+  <option value="wd:Q570116" data-kategori="alam" data-id="bangunan">Objek wisata</option>
+  <option value="wd:Q330284 wd:Q11315" data-id="bangunan">Pasar dan mall</option>
+  <option value="wd:Q7075" data-id="bangunan">Perpustakaan</option>
+  <option value="wd:Q22746 wd:Q174782" data-kategori="alam" data-id="bangunan">Ruang terbuka hijau</option>
+  <option value="wd:Q16917" data-id="bangunan">Rumah sakit</option>
+  <option value="wd:Q483110 wd:Q2310214" data-id="bangunan">Stadion & lapangan olahraga</option>
+  <option value="wd:Q3918 wd:Q38723" data-id="bangunan">Universitas & kampus</option>
+  
+  <option disabled style="font-weight: bold; color: black;">Transportasi</option>
+  <option value="wd:Q1248784" data-id="bangunan">Bandar udara</option>
+  <option value="wd:Q44782" data-id="bangunan">Pelabuhan</option>
+  <option value="wd:Q55488" data-id="stasiun">Stasiun kereta api</option>
+  <option value="wd:Q494829" data-id="bangunan">Terminal bus</option>
+  
+  <option disabled style="font-weight: bold; color: black;">Bentang alam</option>  
+  <option value="wd:Q34038" data-kategori="alam" data-id="alam">Air terjun</option>
+  <option value="wd:Q179049" data-kategori="alam" data-id="alam">Cagar alam</option>
+  <option value="wd:Q23397 wd:Q204324 wd:Q159954" data-kategori="alam" data-id="alam">Danau & kaldera</option>   
+  <option value="wd:Q35509" data-kategori="alam" data-id="alam">Gua</option>
+  <option value="wd:Q8502" data-kategori="alam" data-id="gunung">Gunung</option>
+  <option value="wd:Q40080" data-kategori="alam" data-id="alam">Pantai</option>
+  <option value="wd:Q23442" data-kategori="alam" data-id="pulau">Pulau</option>
+  <option value="wd:Q131681 wd:Q12323" data-kategori="alam" data-id="alam">Waduk, bendungan, & embung</option>
+  
+  <option disabled style="font-weight: bold; color: black;">Objek lainnya</option>
+  <option value="wd:Q7944 wd:Q8070" data-lokasi="P276" data-tahun="P585" data-id="bencana">Gempa bumi dan tsunami</option>
+  <option value="wd:Q8065 wd:Q3839081 wd:Q7692360 wd:Q8068" data-lokasi="P276" data-tahun="P585" data-id="bencana">Bencana lainnya</option>
+  <option value="wd:Q1323212 wd:Q3199915 wd:Q198 wd:Q645883 wd:Q831663 wd:Q180684 wd:Q178561 wd:Q1261499" data-lokasi="P276" data-tahun="P585" data-id="peristiwa">Perang & konflik</option>
+  <option value="wd:Q1190554" data-lokasi="P276" data-tahun="P585" data-id="peristiwa">Peristiwa lainnya</option>
+  <option value="wd:Q7725634" data-lokasi="P840" data-tahun="P577" data-id="latar_karya">Latar karya sastra</option>
+  <option value="wd:Q3305213" data-lokasi="P276" data-tahun="P571" data-id="lukisan">Lukisan</option>
+  <option value="wd:Q1641020" data-lokasi="P276" data-id="naskah">Lontar</option>
+  <option value="wd:Q87167" data-lokasi="P276" data-id="naskah">Naskah</option>
+  <option value="wd:Q47461344 wd:Q7725634" data-lokasi="P291" data-tahun="P577" data-id="publikasi">Publikasi</option>
+  <option value="apapun" data-id="universal">Semua Jenis Objek</option>
 
-      <option value="wd:Q3947">Rumah</option>
-      <option value="wd:Q875016">Rumah teras</option>
-      <option value="wd:Q5783996 wd:Q654772">Penginapan dan losmen</option>
-      <option value="wd:Q852190">Bangkai kapal</option>
-      <option value="wd:Q11446">Kapal</option>
-      <option value="wd:Q1115575">Paroki sipil</option>
-      <option value="wd:Q108325">Kapel</option>
-      <option value="wd:Q10145">Pal</option>
-      <option value="wd:Q718966">Rumah dokter</option>
-      <option value="wd:Q42948">Dinding</option>
-      <option value="wd:Q4671329">academy school (Inggris)</option>
-      <option value="wd:Q5084">Kampung</option>
-      <option value="wd:Q575759">war memorial</option>
-      <option value="wd:Q41253">Bioskop</option>
-      <option value="wd:Q24354">teater</option>
-      <option value="wd:Q277760">Seketeng</option>
-      <option value="wd:Q12280 wd:Q537127">Jembatan dan road bridge</option>
-      <option value="wd:Q79007">nama jalan</option>
-      <option value="wd:Q47521" data-kategori="alam">aliran</option>
-      <option value="wd:Q28564">perpustakaan umum</option>
-      <option value="wd:Q1244442">Bangunan sekolah</option>
-      <option value="wd:Q207326 wd:Q740445" data-kategori="alam">Puncak dan rabung</option>
-      <option value="wd:Q53060">Gerbang</option>
-      <option value="wd:Q203443">Batu nisan</option>
-      <option value="wd:Q381885">Pusara</option>
-      <option value="wd:Q23413">kastel</option>
-      <option value="wd:Q19833736">chest tomb Inggris</option>
-      <option value="wd:Q12859788">kapal uap</option>
-      <option value="wd:Q3950">vila</option>
-      <option value="wd:Q22698" data-kategori="alam">taman</option>
-      <option value="wd:Q1021645">Bangunan Perkantoran</option>
-      <option value="wd:Q185113" data-kategori="alam">tanjung</option>
-      <option value="wd:Q1088552">bangunan gereja Katolik</option>
-      <option value="wd:Q7963015">walled garden Inggris</option>
-      <option value="wd:Q92086">promontory fort Inggris</option>
-      <option value="wd:Q16884952 wd:Q879050">country house dan rumah bangsawan</option>
-      <option value="wd:Q25550691">Balai kota</option>
-      <option value="wd:Q10300916">cultural heritage of China</option>
-      <option value="wd:Q928830">stasiun kereta api metro</option>
-      <option value="wd:Q11670533">stasiun layang</option>
-      <option value="wd:Q22808403">stasiun bawah tanah</option>
-      
-      <option value="custom">Ketik Q-ID Sendiri...</option>
-    </select>
+  <!-- Pilihan Lainnya otomatis masuk 'bangunan' jika sesuai konteksnya, atau biarkan default -->
+  <option value="wd:Q3947" data-id="bangunan">Rumah</option>
+  <option value="custom" data-id="custom">Ketik Q-ID Sendiri...</option>
+</select>
+
     <label for="jenis-input" style="font-weight: bold;">Q-ID (terisi otomatis sesuai kategori):</label>
     <input type="text" id="jenis-input" value="wd:Q3199141 wd:Q3191695" readonly style="padding: 10px; border-radius: 5px; border: 1px solid #ccc; background-color: #f5f5f5;">
 
