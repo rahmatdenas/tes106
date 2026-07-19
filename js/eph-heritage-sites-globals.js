@@ -202,53 +202,29 @@ BIND (SUBSTR(STR(?site), 32) AS ?siteQid) .
 }
 
 function getSparqlQuery6(qid) {
-  let klaster = typeof currentNamaKlaster !== 'undefined' ? currentNamaKlaster : 'Objek';
+  let aturan = KategoriAturan[currentIdKlaster] || KategoriAturan['universal'];
+  let blok = aturan.blokSPARQL;
 
-  // 1. Data Universal (Semua Klaster Bisa Punya)
-  // Perhatikan ?luasData sekarang berupa gabungan "Angka|Satuan|KeteranganP518"
-let selectClause = `SELECT ?siteQid (GROUP_CONCAT(DISTINCT ?tipeLabel; SEPARATOR=", ") AS ?tipeList) (SAMPLE(?ketinggianVal) AS ?ketinggian) (SAMPLE(?luasData) AS ?luas) `;
-let whereClause = `
-  VALUES ?site { wd:${qid} }
-  OPTIONAL {
-    ?site wdt:P31 ?tipeVal .
-    
-    # 1. Coba ambil label Indonesianya dulu
+  // 1. Data Universal
+  let selectClause = `SELECT ?siteQid (GROUP_CONCAT(DISTINCT ?tipeLabel; SEPARATOR=", ") AS ?tipeList) (SAMPLE(?ketinggianVal) AS ?ketinggian) (SAMPLE(?luasData) AS ?luas) `;
+  let whereClause = `
+    VALUES ?site { wd:${qid} }
     OPTIONAL {
-      ?tipeVal rdfs:label ?tipeLabelId .
-      FILTER(LANG(?tipeLabelId) = "id")
+      ?site wdt:P31 ?tipeVal .
+      OPTIONAL { ?tipeVal rdfs:label ?tipeLabelId . FILTER(LANG(?tipeLabelId) = "id") }
+      BIND(COALESCE(?tipeLabelId, REPLACE(STR(?tipeVal), "^.*/", "")) AS ?tipeLabel)
     }
-    
-    # 2. Jika kosong, potong URL dan ambil Q-ID-nya
-    BIND(COALESCE(?tipeLabelId, REPLACE(STR(?tipeVal), "^.*/", "")) AS ?tipeLabel)
-  }
-  OPTIONAL { ?site wdt:P2044 ?ketinggianVal . }
-  OPTIONAL {
-    ?site p:P2046 ?luasStmt .
-    ?luasStmt psv:P2046 ?luasNode .
-    ?luasNode wikibase:quantityAmount ?luasVal .
-    OPTIONAL { 
-      ?luasNode wikibase:quantityUnit ?luasUnitItem . 
-      ?luasUnitItem rdfs:label ?luasUnitLabel . 
-      FILTER(LANG(?luasUnitLabel) = "id") 
+    OPTIONAL { ?site wdt:P2044 ?ketinggianVal . }
+    OPTIONAL {
+      ?site p:P2046 ?luasStmt . ?luasStmt psv:P2046 ?luasNode . ?luasNode wikibase:quantityAmount ?luasVal .
+      OPTIONAL { ?luasNode wikibase:quantityUnit ?luasUnitItem . ?luasUnitItem rdfs:label ?luasUnitLabel . FILTER(LANG(?luasUnitLabel) = "id") }
+      OPTIONAL { ?luasStmt pq:P518 ?luasBagianItem . ?luasBagianItem rdfs:label ?luasBagianLabel . FILTER(LANG(?luasBagianLabel) = "id") }
+      BIND(CONCAT(STR(?luasVal), "|", IF(BOUND(?luasUnitLabel), ?luasUnitLabel, ""), "|", IF(BOUND(?luasBagianLabel), ?luasBagianLabel, "")) AS ?luasData)
     }
-    OPTIONAL { 
-      ?luasStmt pq:P518 ?luasBagianItem . 
-      ?luasBagianItem rdfs:label ?luasBagianLabel . 
-      FILTER(LANG(?luasBagianLabel) = "id") 
-    }
-    BIND(CONCAT(STR(?luasVal), "|", IF(BOUND(?luasUnitLabel), ?luasUnitLabel, ""), "|", IF(BOUND(?luasBagianLabel), ?luasBagianLabel, "")) AS ?luasData)
-  }
-`;
+  `;
 
-  // 2. KLASTER BANGUNAN & FASILITAS
-  const klasterBangunan = [
-    'Masjid', 'Bangunan bersejarah', 'Gereja & katedral', 'Vihara & kelenteng', 
-    'Rumah sakit', 'Universitas & kampus', 'Perpustakaan', 'Istana', 'Bandar udara', 
-    'Terminal bus', 'Stadion & lapangan olahraga', 'Kuil & candi', 'Benteng dan bunker', 'Bangunan secara umum dan struktur arsitektur',
-    'Pasar dan mall', 'Hotel dan resor', 'Monumen, patung, & memorial', 'Museum', 'Stasiun kereta api'
-  ];
-  
-  if (klasterBangunan.includes(klaster)) {
+  // 2. BLOK BANGUNAN
+  if (blok.includes("bangunan")) {
     selectClause += `(SAMPLE(?kapasitasVal) AS ?kapasitas) (SAMPLE(?kondisiLabel) AS ?kondisi) (SAMPLE(?webVal) AS ?lamanResmi) (SAMPLE(?arsitekLabel) AS ?arsitek) (GROUP_CONCAT(DISTINCT ?fasilitasLabel; separator=", ") AS ?fasilitasList) (GROUP_CONCAT(DISTINCT ?gayaLabel; separator=", ") AS ?gayaList) `;
     whereClause += `
       OPTIONAL { ?site wdt:P1083 ?kapasitasVal . }
@@ -260,8 +236,8 @@ let whereClause = `
     `;
   }
 
-  // 3. KONDISI KHUSUS PER KLASTER
-if (klaster === 'Wilayah Administratif') {
+  // 3. BLOK WILAYAH ADMIN
+  if (blok.includes("wilayah")) {
     selectClause += `(SAMPLE(?popData) AS ?populasi) (SAMPLE(?govData) AS ?kepalaDaerah) (SAMPLE(?webVal) AS ?lamanResmi) `;
     whereClause += `
       OPTIONAL { ?site wdt:P856 ?webVal . }
@@ -274,221 +250,140 @@ if (klaster === 'Wilayah Administratif') {
         ?site p:P6 ?govStmt . ?govStmt ps:P6 ?govItem . 
         ?govItem rdfs:label ?govLabel . FILTER(LANG(?govLabel) = "id")
         OPTIONAL { ?govStmt pq:P580 ?govDate . }
-        
-        # Lacak artikel Wikipedia Bahasa Indonesia untuk tokoh ini
-        OPTIONAL {
-          ?govWiki schema:about ?govItem ;
-                   schema:isPartOf <https://id.wikipedia.org/> .
-        }
-        
-        # Gabungkan Data: Nama | Tahun | URL (Jika tidak ada URL, isi dengan kata "kosong")
+        OPTIONAL { ?govWiki schema:about ?govItem ; schema:isPartOf <https://id.wikipedia.org/> . }
         BIND(CONCAT(STR(?govLabel), "|", STR(YEAR(?govDate)), "|", IF(BOUND(?govWiki), STR(?govWiki), "kosong")) AS ?govData)
       }
     `;
   }
-  else if (klaster === 'Stasiun kereta api') {
+
+  // BLOK STASIUN
+  if (blok.includes("stasiun")) {
     selectClause += `(GROUP_CONCAT(DISTINCT ?jalurLabel; separator=", ") AS ?jalurList) `;
     whereClause += `OPTIONAL { ?site wdt:P81 ?jalurItem . ?jalurItem rdfs:label ?jalurLabel . FILTER(LANG(?jalurLabel) = "id") }`;
   }
-  else if (klaster === 'Museum') {
+
+  // BLOK MUSEUM
+  if (blok.includes("museum")) {
     selectClause += `(SAMPLE(?koleksiData) AS ?jumlahKoleksi) (GROUP_CONCAT(DISTINCT ?spesialisasiLabel; separator=", ") AS ?spesialisasiList) `;
     whereClause += `
       OPTIONAL {
-        ?site p:P1436 ?koleksiStmt .
-        ?koleksiStmt psv:P1436 ?koleksiNode .
-        ?koleksiNode wikibase:quantityAmount ?koleksiVal .
-        OPTIONAL { 
-          ?koleksiNode wikibase:quantityUnit ?koleksiUnitItem . 
-          ?koleksiUnitItem rdfs:label ?koleksiUnitLabel . 
-          FILTER(LANG(?koleksiUnitLabel) = "id") 
-        }
+        ?site p:P1436 ?koleksiStmt . ?koleksiStmt psv:P1436 ?koleksiNode . ?koleksiNode wikibase:quantityAmount ?koleksiVal .
+        OPTIONAL { ?koleksiNode wikibase:quantityUnit ?koleksiUnitItem . ?koleksiUnitItem rdfs:label ?koleksiUnitLabel . FILTER(LANG(?koleksiUnitLabel) = "id") }
         BIND(CONCAT(STR(?koleksiVal), "|", IF(BOUND(?koleksiUnitLabel), ?koleksiUnitLabel, "")) AS ?koleksiData)
       }
       OPTIONAL { ?site wdt:P101 ?spesialisasiItem . ?spesialisasiItem rdfs:label ?spesialisasiLabel . FILTER(LANG(?spesialisasiLabel) = "id") }
     `;
   }
 
-  // ==========================================
-  // BLOK 1: PENEMUAN ARKEOLOGI
-  // ==========================================
-  if (['Prasasti', 'Situs arkeologi', 'Artefak'].includes(klaster)) {
-    selectClause += `(SAMPLE(?tglTemuData) AS ?tglTemu) (SAMPLE(?tempatTemuLabel) AS ?tempatTemu) `;
+  // BLOK ARKEOLOGI
+  if (blok.includes("arkeologi")) {
+    selectClause += `(SAMPLE(?tglTemuData) AS ?tglTemu) (SAMPLE(?tempatTemuLabel) AS ?tempatTemu) (GROUP_CONCAT(DISTINCT ?agamaLabel; separator=", ") AS ?agamaList) `;
     whereClause += `
       OPTIONAL {
-        ?site p:P575 ?tglTemuStmt .
-        ?tglTemuStmt psv:P575 ?tglTemuNode .
-        ?tglTemuNode wikibase:timeValue ?tglTemuVal ; 
-                     wikibase:timePrecision ?tglTemuPrec .
+        ?site p:P575 ?tglTemuStmt . ?tglTemuStmt psv:P575 ?tglTemuNode .
+        ?tglTemuNode wikibase:timeValue ?tglTemuVal ; wikibase:timePrecision ?tglTemuPrec .
         BIND(CONCAT(STR(?tglTemuVal), "|", STR(?tglTemuPrec)) AS ?tglTemuData)
       }
       OPTIONAL { ?site wdt:P189 ?tempatTemuItem . ?tempatTemuItem rdfs:label ?tempatTemuLabel . FILTER(LANG(?tempatTemuLabel) = "id") }
-    `;
-  }
-
-  if (['Situs arkeologi'].includes(klaster)) {
-    selectClause += `(GROUP_CONCAT(DISTINCT ?agamaLabel; separator=", ") AS ?agamaList) `;
-    whereClause += `
       OPTIONAL { ?site wdt:P140 ?agamaItem . ?agamaItem rdfs:label ?agamaLabel . FILTER(LANG(?agamaLabel) = "id") }
     `;
   }
 
-  // ==========================================
-  // BLOK BARU: BAGIAN DARI (P361)
-  // ==========================================
-  if (['Pulau', 'Peristiwa lainnya', 'Perang & konflik', 'Bencana lainnya', 'Situs arkeologi', 'Prasasti', 'Artefak'].includes(klaster)) {
+  // BLOK BAGIAN DARI
+  if (blok.includes("bagian_dari")) {
     selectClause += `(SAMPLE(?bagianDariLabel) AS ?bagianDari) `;
-    whereClause += `
-      OPTIONAL { ?site wdt:P361 ?bagianDariItem . ?bagianDariItem rdfs:label ?bagianDariLabel . FILTER(LANG(?bagianDariLabel) = "id") }
-    `;
+    whereClause += `OPTIONAL { ?site wdt:P361 ?bagianDariItem . ?bagianDariItem rdfs:label ?bagianDariLabel . FILTER(LANG(?bagianDariLabel) = "id") }`;
   }
   
-  // ==========================================
-  // BLOK 2: KARYA & LITERATUR
-  // ==========================================
-if (['Prasasti', 'Lontar', 'Naskah', 'Media massa', 'Publikasi', 'Latar karya sastra', 'Lukisan'].includes(klaster)) {
+  // BLOK KARYA SASTRA & PUBLIKASI
+  if (blok.includes("karya")) {
     selectClause += `(GROUP_CONCAT(DISTINCT ?bhsLabel; separator=", ") AS ?bahasaList) (GROUP_CONCAT(DISTINCT ?bentukLabel; separator=", ") AS ?bentukList) (GROUP_CONCAT(DISTINCT ?genreLabel; separator=", ") AS ?genreList) (GROUP_CONCAT(DISTINCT ?penulisLabel; separator=", ") AS ?penulisList) (GROUP_CONCAT(DISTINCT ?subjekLabel; separator=", ") AS ?subjekList) `;
     whereClause += `
       OPTIONAL { ?site wdt:P407 ?bhsItem . ?bhsItem rdfs:label ?bhsLabel . FILTER(LANG(?bhsLabel) = "id") }
       OPTIONAL { ?site wdt:P7937 ?bentukItem . ?bentukItem rdfs:label ?bentukLabel . FILTER(LANG(?bentukLabel) = "id") }
-      # Genre (P136)
       OPTIONAL { ?site wdt:P136 ?genreItem . ?genreItem rdfs:label ?genreLabel . FILTER(LANG(?genreLabel) = "id") }
       OPTIONAL { ?site wdt:P50 ?penulisItem . ?penulisItem rdfs:label ?penulisLabel . FILTER(LANG(?penulisLabel) = "id") }
       OPTIONAL { ?site wdt:P921 ?subjekItem . ?subjekItem rdfs:label ?subjekLabel . FILTER(LANG(?subjekLabel) = "id") }
     `;
   }
 
-  // ==========================================
-  // BLOK 3: KHUSUS KOLEKSI
-  // ==========================================
-  if (['Prasasti', 'Artefak', 'Lontar', 'Naskah', 'Lukisan'].includes(klaster)) {
+  // BLOK KOLEKSI
+  if (blok.includes("koleksi")) {
     selectClause += `(GROUP_CONCAT(DISTINCT ?kolektorLabel; separator=", ") AS ?kolektorList) `;
-    whereClause += `
-      OPTIONAL { ?site wdt:P195 ?kolektorItem . ?kolektorItem rdfs:label ?kolektorLabel . FILTER(LANG(?kolektorLabel) = "id") }
-    `;
+    whereClause += `OPTIONAL { ?site wdt:P195 ?kolektorItem . ?kolektorItem rdfs:label ?kolektorLabel . FILTER(LANG(?kolektorLabel) = "id") }`;
   }
 
-  // ==========================================
-  // BLOK 4: ATRIBUT FISIK, MATERIAL & PENCIPTA (BARU)
-  // ==========================================
-if (['Prasasti', 'Situs arkeologi', 'Artefak', 'Lontar', 'Naskah', 'Lukisan'].includes(klaster)) {
-    // Tambahkan ?lebar pada selectClause
+  // BLOK ATRIBUT FISIK/MATERIAL
+  if (blok.includes("karya_fisik")) {
     selectClause += `(SAMPLE(?penciptaLabel) AS ?pencipta) (SAMPLE(?panjangData) AS ?panjang) (SAMPLE(?lebarData) AS ?lebar) (SAMPLE(?tinggiData) AS ?tinggi) (GROUP_CONCAT(DISTINCT ?bahanLabel; separator=", ") AS ?bahanList) (GROUP_CONCAT(DISTINCT ?aksaraLabel; separator=", ") AS ?aksaraList) `;
-    
     whereClause += `
-      # Pencipta (P170)
       OPTIONAL { ?site wdt:P170 ?penciptaItem . ?penciptaItem rdfs:label ?penciptaLabel . FILTER(LANG(?penciptaLabel) = "id") }
-      
-      # Panjang (P2043) + Satuan
       OPTIONAL {
-        ?site p:P2043 ?pjgStmt .
-        ?pjgStmt psv:P2043 ?pjgNode .
-        ?pjgNode wikibase:quantityAmount ?pjgVal .
-        OPTIONAL { 
-          ?pjgNode wikibase:quantityUnit ?pjgUnitItem . 
-          ?pjgUnitItem rdfs:label ?pjgUnitLabel . 
-          FILTER(LANG(?pjgUnitLabel) = "id") 
-        }
+        ?site p:P2043 ?pjgStmt . ?pjgStmt psv:P2043 ?pjgNode . ?pjgNode wikibase:quantityAmount ?pjgVal .
+        OPTIONAL { ?pjgNode wikibase:quantityUnit ?pjgUnitItem . ?pjgUnitItem rdfs:label ?pjgUnitLabel . FILTER(LANG(?pjgUnitLabel) = "id") }
         BIND(CONCAT(STR(?pjgVal), "|", IF(BOUND(?pjgUnitLabel), ?pjgUnitLabel, "")) AS ?panjangData)
       }
-
-      # Lebar (P2049) + Satuan
       OPTIONAL {
-        ?site p:P2049 ?lbrStmt .
-        ?lbrStmt psv:P2049 ?lbrNode .
-        ?lbrNode wikibase:quantityAmount ?lbrVal .
-        OPTIONAL { 
-          ?lbrNode wikibase:quantityUnit ?lbrUnitItem . 
-          ?lbrUnitItem rdfs:label ?lbrUnitLabel . 
-          FILTER(LANG(?lbrUnitLabel) = "id") 
-        }
+        ?site p:P2049 ?lbrStmt . ?lbrStmt psv:P2049 ?lbrNode . ?lbrNode wikibase:quantityAmount ?lbrVal .
+        OPTIONAL { ?lbrNode wikibase:quantityUnit ?lbrUnitItem . ?lbrUnitItem rdfs:label ?lbrUnitLabel . FILTER(LANG(?lbrUnitLabel) = "id") }
         BIND(CONCAT(STR(?lbrVal), "|", IF(BOUND(?lbrUnitLabel), ?lbrUnitLabel, "")) AS ?lebarData)
       }
-
-      # Tinggi (P2048) + Satuan
       OPTIONAL {
-        ?site p:P2048 ?tgStmt .
-        ?tgStmt psv:P2048 ?tgNode .
-        ?tgNode wikibase:quantityAmount ?tgVal .
-        OPTIONAL { 
-          ?tgNode wikibase:quantityUnit ?tgUnitItem . 
-          ?tgUnitItem rdfs:label ?tgUnitLabel . 
-          FILTER(LANG(?tgUnitLabel) = "id") 
-        }
+        ?site p:P2048 ?tgStmt . ?tgStmt psv:P2048 ?tgNode . ?tgNode wikibase:quantityAmount ?tgVal .
+        OPTIONAL { ?tgNode wikibase:quantityUnit ?tgUnitItem . ?tgUnitItem rdfs:label ?tgUnitLabel . FILTER(LANG(?tgUnitLabel) = "id") }
         BIND(CONCAT(STR(?tgVal), "|", IF(BOUND(?tgUnitLabel), ?tgUnitLabel, "")) AS ?tinggiData)
       }
-
-      # Bahan yang digunakan (P186)
       OPTIONAL { ?site wdt:P186 ?bahanItem . ?bahanItem rdfs:label ?bahanLabel . FILTER(LANG(?bahanLabel) = "id") }
-
-      # Sistem penulisan (P282)
       OPTIONAL { ?site wdt:P282 ?aksaraItem . ?aksaraItem rdfs:label ?aksaraLabel . FILTER(LANG(?aksaraLabel) = "id") }
     `;
   }
 
-  // ==========================================
-  // BLOK LAINNYA
-  // ==========================================
-if (klaster === 'Media massa') {
+  // BLOK MEDIA MASSA
+  if (blok.includes("media")) {
     selectClause += `(GROUP_CONCAT(DISTINCT ?pemredLabel; separator=", ") AS ?pemredList) (GROUP_CONCAT(DISTINCT ?pendiriLabel; separator=", ") AS ?pendiriList) (SAMPLE(?penerbitLabel) AS ?penerbit) (SAMPLE(?berakhirData) AS ?berakhirPada) `;
     whereClause += `
       OPTIONAL { ?site wdt:P5769 ?pemredItem . ?pemredItem rdfs:label ?pemredLabel . FILTER(LANG(?pemredLabel) = "id") }
       OPTIONAL { ?site wdt:P112 ?pendiriItem . ?pendiriItem rdfs:label ?pendiriLabel . FILTER(LANG(?pendiriLabel) = "id") }
       OPTIONAL { ?site wdt:P123 ?penerbitItem . ?penerbitItem rdfs:label ?penerbitLabel . FILTER(LANG(?penerbitLabel) = "id") }
-      
-      # Berakhir pada (P582)
       OPTIONAL {
-        ?site p:P582 ?berakhirStmt .
-        ?berakhirStmt psv:P582 ?berakhirNode .
-        ?berakhirNode wikibase:timeValue ?berakhirVal ; 
-                      wikibase:timePrecision ?berakhirPrec .
+        ?site p:P582 ?berakhirStmt . ?berakhirStmt psv:P582 ?berakhirNode .
+        ?berakhirNode wikibase:timeValue ?berakhirVal ; wikibase:timePrecision ?berakhirPrec .
         BIND(CONCAT(STR(?berakhirVal), "|", STR(?berakhirPrec)) AS ?berakhirData)
       }
     `;
   }
-  else if (klaster === 'Hidangan') {
+
+  // BLOK LAIN-LAIN
+  if (blok.includes("resep")) {
     selectClause += `(GROUP_CONCAT(DISTINCT ?bahanLabel; separator=", ") AS ?bahanList) (GROUP_CONCAT(DISTINCT ?caraLabel; separator=", ") AS ?caraList) (SAMPLE(?wikibooksUrl) AS ?wikibooks) `;
     whereClause += `
       OPTIONAL { ?site wdt:P186 ?bahanItem . ?bahanItem rdfs:label ?bahanLabel . FILTER(LANG(?bahanLabel) = "id") }
       OPTIONAL { ?site wdt:P2079 ?caraItem . ?caraItem rdfs:label ?caraLabel . FILTER(LANG(?caraLabel) = "id") }
-      OPTIONAL {
-        ?wikibooksUrl schema:about ?site ;
-                      schema:isPartOf <https://id.wikibooks.org/> .
-      }
+      OPTIONAL { ?wikibooksUrl schema:about ?site ; schema:isPartOf <https://id.wikibooks.org/> . }
     `;
   }
-  else if (klaster === 'Bahasa') {
+  
+  if (blok.includes("bahasa")) {
     selectClause += `(SAMPLE(?penuturData) AS ?penutur) `;
-    whereClause += `
-      OPTIONAL {
-        ?site p:P1098 ?penuturStmt . ?penuturStmt ps:P1098 ?penuturVal .
-        OPTIONAL { ?penuturStmt pq:P585 ?penuturDate . }
-        BIND(CONCAT(STR(?penuturVal), "|", STR(YEAR(?penuturDate))) AS ?penuturData)
-      }
-    `;
+    whereClause += `OPTIONAL { ?site p:P1098 ?penuturStmt . ?penuturStmt ps:P1098 ?penuturVal . OPTIONAL { ?penuturStmt pq:P585 ?penuturDate . } BIND(CONCAT(STR(?penuturVal), "|", STR(YEAR(?penuturDate))) AS ?penuturData) }`;
   }
-else if (klaster === 'Tokoh') {
+
+  if (blok.includes("tokoh")) {
     selectClause += `(SAMPLE(?wafatData) AS ?tglWafat) (GROUP_CONCAT(DISTINCT ?kerjaLabel; separator=", ") AS ?pekerjaanList) (GROUP_CONCAT(DISTINCT ?ahliLabel; separator=", ") AS ?spesialisasiList) (GROUP_CONCAT(DISTINCT ?koleksiKaryaLabel; separator=", ") AS ?koleksiKaryaList) `;
     whereClause += `
-      OPTIONAL {
-        ?site p:P570 ?wafatStmt .
-        ?wafatStmt psv:P570 ?wafatNode .
-        ?wafatNode wikibase:timeValue ?wafatVal ; 
-                   wikibase:timePrecision ?wafatPrec .
-        BIND(CONCAT(STR(?wafatVal), "|", STR(?wafatPrec)) AS ?wafatData)
-      }
+      OPTIONAL { ?site p:P570 ?wafatStmt . ?wafatStmt psv:P570 ?wafatNode . ?wafatNode wikibase:timeValue ?wafatVal ; wikibase:timePrecision ?wafatPrec . BIND(CONCAT(STR(?wafatVal), "|", STR(?wafatPrec)) AS ?wafatData) }
       OPTIONAL { ?site wdt:P106 ?kerjaItem . ?kerjaItem rdfs:label ?kerjaLabel . FILTER(LANG(?kerjaLabel) = "id") }
       OPTIONAL { ?site wdt:P101 ?ahliItem . ?ahliItem rdfs:label ?ahliLabel . FILTER(LANG(?ahliLabel) = "id") }
-      
-      # Memiliki karya yang disimpan dalam koleksi (P6379)
       OPTIONAL { ?site wdt:P6379 ?koleksiKaryaItem . ?koleksiKaryaItem rdfs:label ?koleksiKaryaLabel . FILTER(LANG(?koleksiKaryaLabel) = "id") }
     `;
   }
-  else if (klaster === 'Gunung') {
+
+  if (blok.includes("gunung")) {
     selectClause += `(SAMPLE(?gunungLabel) AS ?pegunungan) `;
     whereClause += `OPTIONAL { ?site wdt:P4552 ?gunungItem . ?gunungItem rdfs:label ?gunungLabel . FILTER(LANG(?gunungLabel) = "id") }`;
   }
   
-  if (['Gempa bumi', 'Bencana lainnya', 'Peristiwa lainnya', 'Perang & konflik'].includes(klaster)) {
+  if (blok.includes("korban")) {
     selectClause += `(SAMPLE(?korbanVal) AS ?korban) `;
     whereClause += `OPTIONAL { ?site wdt:P1120 ?korbanVal . }`;
   }
