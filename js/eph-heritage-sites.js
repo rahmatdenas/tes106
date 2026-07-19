@@ -1,6 +1,7 @@
 'use strict';
 
 const CHUNK_SIZE = 35;
+
 // --- KAMUS KONFIGURASI KLASTER ---
 const KategoriAturan = {
   "wilayah_admin": { prefixLokasi: "Provinsi", prefixTahun: "Hari jadi", blokSPARQL: ["wilayah"] },
@@ -31,11 +32,24 @@ const KategoriAturan = {
   "custom":        { prefixLokasi: "Letak", prefixTahun: "Tahun/Waktu", blokSPARQL: [] }
 };
 
-var currentIdKlaster = 'universal'; // Tambahkan variabel global baru ini
-
+var currentIdKlaster = 'universal'; 
 var currentRenderIndex = 0;
 var currentFilteredRecords = [];
 var isFilterEventAttached = false; 
+
+// Fungsi untuk merapikan input Q-ID dari pengguna ("q123 q456" otomatis jadi "wd:Q123 wd:Q456")
+function rapikanInputQID(rawInput) {
+  if (!rawInput) return "";
+  let tokens = rawInput.trim().split(/\s+/);
+  let hasil = tokens.map(token => {
+    let bersih = token.replace(/^wd:/i, '');
+    if (bersih.toLowerCase().startsWith('q')) {
+      bersih = 'Q' + bersih.substring(1);
+    }
+    return 'wd:' + bersih;
+  });
+  return hasil.join(' ');
+}
 
 // Fungsi pembelah array menjadi potongan kecil (Batching)
 function potongJadiKelompok(array, ukuran) {
@@ -158,8 +172,8 @@ function aturTampilanNegara() {
 }
 
 function populateProvinceTypesData() {
-  // 1. Variabel krusial yang sempat hilang
-  let inputTxt = document.getElementById('jenis-input').value.trim();
+  let rawInputTxt = document.getElementById('jenis-input').value.trim();
+  let inputTxt = rapikanInputQID(rawInputTxt);
   
   let provDropdown = document.getElementById('provinsi-input');
   let provInput = provDropdown.value;
@@ -170,7 +184,6 @@ function populateProvinceTypesData() {
   let jenisDropdown = document.getElementById('jenis-dropdown');
   let opsiTerpilih = jenisDropdown.options[jenisDropdown.selectedIndex];
 
-  // Ekstrak ID untuk mesin logika
   currentIdKlaster = opsiTerpilih.getAttribute('data-id') || 'universal';
 
   if (jenisDropdown.value === 'custom') {
@@ -179,14 +192,13 @@ function populateProvinceTypesData() {
     currentNamaKlaster = opsiTerpilih.text; 
   }
 
-  // Tarik properti langsung dari HTML atribut
   currentKategoriUtama = opsiTerpilih.getAttribute('data-kategori') || 'general';
   let propLokasi = opsiTerpilih.getAttribute('data-lokasi') || 'P131';
   let propTahun = opsiTerpilih.getAttribute('data-tahun') || 'P571';
   
-  // LOGIKA PENAMAAN WILAYAH YANG AMAN (Digabung agar tidak saling timpa)
   if (provInput === 'custom_lokasi') {
-    provInput = document.getElementById('lokasi-custom-input').value.trim();
+    let rawLokasi = document.getElementById('lokasi-custom-input').value.trim();
+    provInput = rapikanInputQID(rawLokasi);
     currentNamaWilayah = "Lokasi Kustom";
   } else if (provInput === 'luar_negeri') {
     let negaraDropdown = document.getElementById('negara-input');
@@ -199,27 +211,183 @@ function populateProvinceTypesData() {
   // 2. PERBARUI TAMPILAN
   // ==========================================
   let brandingDesc = document.getElementById('branding-desc');
-  // ... (dan seterusnya ke bawah sama seperti kode Anda)
+  if (brandingDesc) {
+    brandingDesc.textContent = `${currentNamaKlaster} di ${currentNamaWilayah}`;
+  }
+
+  let indexList = document.getElementById('index-list');
+  if (indexList) {
+    indexList.innerHTML = `
+      <div style="padding: 40px 20px; text-align: center; line-height: 1.6;">
+        <h3 id="loading-text" style="margin-bottom: 10px; margin-top:0; color: #333;">
+          Sedang Menarik Data<br/>${currentNamaKlaster} di ${currentNamaWilayah}
+        </h3>
+        <p style="color: #666; font-size:14px; margin-bottom: 25px;">Harap menunggu sebentar...</p>
+        <div class="loader" style="margin: 0 auto; width: 40px; height: 40px; border-width: 4px;"></div>
+      <div id="wadah-tombol-berhenti" style="margin-top: 42px;"></div>
+      </div>
+    `;
+  }
+  
+  // ==========================================
+  // 3. FUNGSI PEMBANTU EKSEKUSI KUERI
+  // ==========================================
+  function eksekusiKueriKeWikidata(kueriFinal) {
+    console.log("Kueri yang dikirim:", kueriFinal);
+    return queryWdqsPaginated(
+      kueriFinal,
+      function(result) {
+        let qid = result.SQ.value;
+        
+        if (!(qid in Records)) Records[qid] = new SimpleRecord(); 
+        
+        let record = Records[qid];
+        record.id = qid;
+
+        record.title = ('sLabel' in result && result.sLabel.value) ? result.sLabel.value : '[ERROR: No title]';
+
+        let provQid = result.PQ ? result.PQ.value : 'Q_UNKNOWN';
+        let provLabel = result.pLabel ? result.pLabel.value : 'Wilayah Lainnya/Tidak Spesifik';
+
+        if (!(provQid in ProvinceIndex)) {
+          ProvinceIndex[provQid] = new ProvinceIndexEntry();
+          ProvinceIndex[provQid].name = provLabel; 
+        }
+        if (!(provQid in record.designations)) record.designations[provQid] = provLabel; 
+        
+        record.areaTags.add(provQid);
+        
+        if ('lLabel' in result && result.lLabel.value) record.lokasiSpesifik = result.lLabel.value;
+        
+        if (!record.tahunBerdiri && result.tM && result.tM.value) {
+          let precision = result.tP ? result.tP.value : 9;
+          record.tahunBerdiri = formatWikidataDate(result.tM.value, precision);        
+          record.rawTahunBerdiri = result.tM.value.replace(/^[+-]/, '');
+        }
+      },
+      function() {
+        populateProvinceIndex(); 
+        Object.values(Records).forEach(record => { record.indexTitle = record.title });
+      },
+      5000 
+    );
+  }
+
+  // ==========================================
+  // 4. LOGIKA PEMILIHAN TEMPLATE KUERI
+  // ==========================================
+  let baseQuery = KUMPULAN_KUERI_0['universal'];
+  
+  if (inputTxt.toLowerCase() === 'apapun' || inputTxt === '') {
+    baseQuery = KUMPULAN_KUERI_0['apapun'];
+    currentNamaKlaster = 'Objek'; 
+  }
+
+  let wilayahClause1 = '';
+  let unionEkstra = ''; 
+  let hierarkiLokasi = '?l wdt:P131* ?p .'; 
+  let kurungBuka = '';
+  let kurungTutup = '';
+  
+  const klasterKhususNasional = ['wilayah_admin', 'bencana', 'peristiwa', 'publikasi', 'lukisan'];
+  let isKhususNasional = klasterKhususNasional.includes(currentIdKlaster);
+  let filterNasional = '?s wdt:P17 wd:Q252 .';
+
+  // Khusus publikasi, difilter berdasarkan bahasa Indonesia (Q9240), bukan negara
+  if (currentIdKlaster === 'publikasi') { 
+    filterNasional = '?s wdt:P407 wd:Q9240 .'; 
+  }
+
+  // --- CABANG LUAR NEGERI ---
+  if (provDropdown.value === 'luar_negeri') {
+    let negaraDropdown = document.getElementById('negara-input');
+    let negaraValue = rapikanInputQID(negaraDropdown.value);
+    
+    baseQuery = KUMPULAN_KUERI_0['luar_negeri'];
+    let dynamicQuery = baseQuery;
+
+    if (inputTxt.toLowerCase() === 'apapun' || inputTxt === '') {
+      dynamicQuery = dynamicQuery.replace(/VALUES \?j \{ <PLACEHOLDER_JENIS> \}/g, '');
+    } else {
+      dynamicQuery = dynamicQuery.replace(/<PLACEHOLDER_JENIS>/g, inputTxt);
+    }
+    
+    dynamicQuery = dynamicQuery
+      .replace(/<PLACEHOLDER_NEGARA>/g, negaraValue)
+      .replace(/<PLACEHOLDER_PROP_LOKASI>/g, propLokasi)
+      .replace(/<PLACEHOLDER_PROP_TAHUN>/g, propTahun);
+      
+    return eksekusiKueriKeWikidata(dynamicQuery); 
+  }
+  
+  // ==========================================
+  // CABANG INDONESIA & LOKASI KUSTOM
+  // ==========================================
+  if (provInput === 'all') {
+    wilayahClause1 = '?p wdt:P31 wd:Q5098 .';
+    
+    if (isKhususNasional && inputTxt.toLowerCase() !== 'apapun' && inputTxt !== '') {
+      baseQuery = KUMPULAN_KUERI_0['khusus_negara_all'];
+    }
+  } else {
+    wilayahClause1 = `?p wdt:P131 ${provInput}.`;
+    let wilayahClause2 = `BIND(${provInput} AS ?p) BIND(${provInput} AS ?l)`; 
+    
+    kurungBuka = '{';
+    kurungTutup = '}';
+    
+    unionEkstra = `
+    UNION {
+      ${wilayahClause2}
+      ?s wdt:P31 ?j ;
+         wdt:${propLokasi} ?l .
+    }`;
+    
+    if (inputTxt.toLowerCase() === 'apapun' || inputTxt === '') {
+       unionEkstra = `
+       UNION {
+         ${wilayahClause2}
+         ?s wdt:P17 wd:Q252 ;
+            wdt:P625 [] ;
+            wdt:P18 [] ;
+            wdt:P131 ?l .
+       }`;
+    }
+  }
+  
+  let dynamicQuery = baseQuery
+    .replace(/<PLACEHOLDER_FILTER_NASIONAL>/g, filterNasional)
+    .replace(/<PLACEHOLDER_KURUNG_BUKA>/g, kurungBuka)  
+    .replace(/<PLACEHOLDER_KURUNG_TUTUP>/g, kurungTutup)  
+    .replace(/<PLACEHOLDER_WILAYAH_1>/g, wilayahClause1)
+    .replace(/<PLACEHOLDER_PROP_LOKASI>/g, propLokasi)
+    .replace(/<PLACEHOLDER_PROP_TAHUN>/g, propTahun)
+    .replace(/<PLACEHOLDER_HIERARKI_LOKASI>/g, hierarkiLokasi)
+    .replace(/<PLACEHOLDER_UNION_EKSTRA>/g, unionEkstra) 
+    .replace(/<PLACEHOLDER_JENIS>/g, inputTxt);
+
+  return eksekusiKueriKeWikidata(dynamicQuery);
+}
 
 async function populateCoordinatesData() {
   let daftarQid = Object.keys(Records).map(id => 'wd:' + id);
   if (daftarQid.length === 0) return;
 
-  // Tarik parameter dari HTML secara langsung
   let jenisDropdown = document.getElementById('jenis-dropdown');
   let opsiTerpilih = jenisDropdown.options[jenisDropdown.selectedIndex];
-  let namaKlaster = (jenisDropdown.value === 'custom') ? 'Objek' : opsiTerpilih.text;
   let propLokasi = opsiTerpilih.getAttribute('data-lokasi') || 'P131';
 
   let templateKueri = KUMPULAN_KUERI_1['universal'];
 
-  const klasterTanpaKoordinatLangsung = [
-    'Hidangan', 'Pakaian', 'Tari dan pertunjukan', 'Ritual dan upacara',  'Artefak',
-    'Budaya rakyat', 'Lukisan', 'Lontar', 'Naskah', 'Perang & konflik',
-    'Tempat lahir tokoh', 'Bahasa', 'Publikasi', 'Media massa', 'Latar karya sastra'
-  ];
+  // Kita manfaatkan KategoriAturan untuk mengetahui apakah butuh koordinat khusus (seperti publikasi)
+  let aturan = KategoriAturan[currentIdKlaster] || KategoriAturan['universal'];
+  let blok = aturan.blokSPARQL;
 
-  let klausaKoordinat = !klasterTanpaKoordinatLangsung.includes(namaKlaster) 
+  // Cek apakah klaster ini tidak memiliki koordinat langsung (P625) 
+  const klasterTanpaKoordinatLangsung = ['karya', 'karya_sastra', 'bahasa', 'resep', 'tokoh'];
+  let butuhKoordinatP131 = klasterTanpaKoordinatLangsung.some(r => blok.includes(r));
+
+  let klausaKoordinat = !butuhKoordinatP131 
     ? `?site p:P625 ?coordStatement .` 
     : `?site wdt:${propLokasi} ?p131Lokasi . FILTER(?p131Lokasi != wd:Q252) ?p131Lokasi p:P625 ?coordStatement .`;
 
@@ -358,13 +526,8 @@ async function populateImageAndWikipediaData() {
         }
       }
       
-      // +++ DIPINDAHKAN KE SINI +++
-      // Hanya mengembalikan teks tombol setelah perulangan persentase untuk data > 20.000 selesai
-      // Catatan: Jika tombol Anda memiliki ikon HTML (misalnya <i>), Anda bisa mengganti
-      // .textContent di bawah menjadi .innerHTML = '<i class="..."></i> Memiliki Gambar'
       if (btnImg) btnImg.textContent = 'Memiliki Gambar';
       if (btnArt) btnArt.textContent = 'Memiliki Artikel';
-      // +++++++++++++++++++++++++++
     }
   } catch (error) {
     if (error === 'ABORTED' || (error && error.name === 'AbortError')) {
@@ -375,6 +538,184 @@ async function populateImageAndWikipediaData() {
   }
 
   if (signal && signal.aborted) return;
+}
+
+function getSparqlQuery6(qid) {
+  let aturan = KategoriAturan[currentIdKlaster] || KategoriAturan['universal'];
+  let blok = aturan.blokSPARQL;
+
+  let selectClause = `SELECT ?siteQid (GROUP_CONCAT(DISTINCT ?tipeLabel; SEPARATOR=", ") AS ?tipeList) (SAMPLE(?ketinggianVal) AS ?ketinggian) (SAMPLE(?luasData) AS ?luas) `;
+  let whereClause = `
+    VALUES ?site { wd:${qid} }
+    OPTIONAL {
+      ?site wdt:P31 ?tipeVal .
+      OPTIONAL { ?tipeVal rdfs:label ?tipeLabelId . FILTER(LANG(?tipeLabelId) = "id") }
+      BIND(COALESCE(?tipeLabelId, REPLACE(STR(?tipeVal), "^.*/", "")) AS ?tipeLabel)
+    }
+    OPTIONAL { ?site wdt:P2044 ?ketinggianVal . }
+    OPTIONAL {
+      ?site p:P2046 ?luasStmt . ?luasStmt psv:P2046 ?luasNode . ?luasNode wikibase:quantityAmount ?luasVal .
+      OPTIONAL { ?luasNode wikibase:quantityUnit ?luasUnitItem . ?luasUnitItem rdfs:label ?luasUnitLabel . FILTER(LANG(?luasUnitLabel) = "id") }
+      OPTIONAL { ?luasStmt pq:P518 ?luasBagianItem . ?luasBagianItem rdfs:label ?luasBagianLabel . FILTER(LANG(?luasBagianLabel) = "id") }
+      BIND(CONCAT(STR(?luasVal), "|", IF(BOUND(?luasUnitLabel), ?luasUnitLabel, ""), "|", IF(BOUND(?luasBagianLabel), ?luasBagianLabel, "")) AS ?luasData)
+    }
+  `;
+
+  if (blok.includes("bangunan")) {
+    selectClause += `(SAMPLE(?kapasitasVal) AS ?kapasitas) (SAMPLE(?kondisiLabel) AS ?kondisi) (SAMPLE(?webVal) AS ?lamanResmi) (SAMPLE(?arsitekLabel) AS ?arsitek) (GROUP_CONCAT(DISTINCT ?fasilitasLabel; separator=", ") AS ?fasilitasList) (GROUP_CONCAT(DISTINCT ?gayaLabel; separator=", ") AS ?gayaList) `;
+    whereClause += `
+      OPTIONAL { ?site wdt:P1083 ?kapasitasVal . }
+      OPTIONAL { ?site wdt:P5817 ?kondisiItem . ?kondisiItem rdfs:label ?kondisiLabel . FILTER(LANG(?kondisiLabel) = "id") }
+      OPTIONAL { ?site wdt:P856 ?webVal . }
+      OPTIONAL { ?site wdt:P84 ?arsitekItem . ?arsitekItem rdfs:label ?arsitekLabel . FILTER(LANG(?arsitekLabel) = "id") }
+      OPTIONAL { ?site wdt:P912 ?fasilitasItem . ?fasilitasItem rdfs:label ?fasilitasLabel . FILTER(LANG(?fasilitasLabel) = "id") }
+      OPTIONAL { ?site wdt:P149 ?gayaItem . ?gayaItem rdfs:label ?gayaLabel . FILTER(LANG(?gayaLabel) = "id") }
+    `;
+  }
+
+  if (blok.includes("wilayah")) {
+    selectClause += `(SAMPLE(?popData) AS ?populasi) (SAMPLE(?govData) AS ?kepalaDaerah) (SAMPLE(?webVal) AS ?lamanResmi) `;
+    whereClause += `
+      OPTIONAL { ?site wdt:P856 ?webVal . }
+      OPTIONAL {
+        ?site p:P1082 ?popStmt . ?popStmt ps:P1082 ?popVal .
+        OPTIONAL { ?popStmt pq:P585 ?popDate . }
+        BIND(CONCAT(STR(?popVal), "|", STR(YEAR(?popDate))) AS ?popData)
+      }
+      OPTIONAL {
+        ?site p:P6 ?govStmt . ?govStmt ps:P6 ?govItem . 
+        ?govItem rdfs:label ?govLabel . FILTER(LANG(?govLabel) = "id")
+        OPTIONAL { ?govStmt pq:P580 ?govDate . }
+        OPTIONAL { ?govWiki schema:about ?govItem ; schema:isPartOf <https://id.wikipedia.org/> . }
+        BIND(CONCAT(STR(?govLabel), "|", STR(YEAR(?govDate)), "|", IF(BOUND(?govWiki), STR(?govWiki), "kosong")) AS ?govData)
+      }
+    `;
+  }
+
+  if (blok.includes("stasiun")) {
+    selectClause += `(GROUP_CONCAT(DISTINCT ?jalurLabel; separator=", ") AS ?jalurList) `;
+    whereClause += `OPTIONAL { ?site wdt:P81 ?jalurItem . ?jalurItem rdfs:label ?jalurLabel . FILTER(LANG(?jalurLabel) = "id") }`;
+  }
+
+  if (blok.includes("museum")) {
+    selectClause += `(SAMPLE(?koleksiData) AS ?jumlahKoleksi) (GROUP_CONCAT(DISTINCT ?spesialisasiLabel; separator=", ") AS ?spesialisasiList) `;
+    whereClause += `
+      OPTIONAL {
+        ?site p:P1436 ?koleksiStmt . ?koleksiStmt psv:P1436 ?koleksiNode . ?koleksiNode wikibase:quantityAmount ?koleksiVal .
+        OPTIONAL { ?koleksiNode wikibase:quantityUnit ?koleksiUnitItem . ?koleksiUnitItem rdfs:label ?koleksiUnitLabel . FILTER(LANG(?koleksiUnitLabel) = "id") }
+        BIND(CONCAT(STR(?koleksiVal), "|", IF(BOUND(?koleksiUnitLabel), ?koleksiUnitLabel, "")) AS ?koleksiData)
+      }
+      OPTIONAL { ?site wdt:P101 ?spesialisasiItem . ?spesialisasiItem rdfs:label ?spesialisasiLabel . FILTER(LANG(?spesialisasiLabel) = "id") }
+    `;
+  }
+
+  if (blok.includes("arkeologi")) {
+    selectClause += `(SAMPLE(?tglTemuData) AS ?tglTemu) (SAMPLE(?tempatTemuLabel) AS ?tempatTemu) (GROUP_CONCAT(DISTINCT ?agamaLabel; separator=", ") AS ?agamaList) `;
+    whereClause += `
+      OPTIONAL {
+        ?site p:P575 ?tglTemuStmt . ?tglTemuStmt psv:P575 ?tglTemuNode .
+        ?tglTemuNode wikibase:timeValue ?tglTemuVal ; wikibase:timePrecision ?tglTemuPrec .
+        BIND(CONCAT(STR(?tglTemuVal), "|", STR(?tglTemuPrec)) AS ?tglTemuData)
+      }
+      OPTIONAL { ?site wdt:P189 ?tempatTemuItem . ?tempatTemuItem rdfs:label ?tempatTemuLabel . FILTER(LANG(?tempatTemuLabel) = "id") }
+      OPTIONAL { ?site wdt:P140 ?agamaItem . ?agamaItem rdfs:label ?agamaLabel . FILTER(LANG(?agamaLabel) = "id") }
+    `;
+  }
+
+  if (blok.includes("bagian_dari")) {
+    selectClause += `(SAMPLE(?bagianDariLabel) AS ?bagianDari) `;
+    whereClause += `OPTIONAL { ?site wdt:P361 ?bagianDariItem . ?bagianDariItem rdfs:label ?bagianDariLabel . FILTER(LANG(?bagianDariLabel) = "id") }`;
+  }
+  
+  if (blok.includes("karya")) {
+    selectClause += `(GROUP_CONCAT(DISTINCT ?bhsLabel; separator=", ") AS ?bahasaList) (GROUP_CONCAT(DISTINCT ?bentukLabel; separator=", ") AS ?bentukList) (GROUP_CONCAT(DISTINCT ?genreLabel; separator=", ") AS ?genreList) (GROUP_CONCAT(DISTINCT ?penulisLabel; separator=", ") AS ?penulisList) (GROUP_CONCAT(DISTINCT ?subjekLabel; separator=", ") AS ?subjekList) `;
+    whereClause += `
+      OPTIONAL { ?site wdt:P407 ?bhsItem . ?bhsItem rdfs:label ?bhsLabel . FILTER(LANG(?bhsLabel) = "id") }
+      OPTIONAL { ?site wdt:P7937 ?bentukItem . ?bentukItem rdfs:label ?bentukLabel . FILTER(LANG(?bentukLabel) = "id") }
+      OPTIONAL { ?site wdt:P136 ?genreItem . ?genreItem rdfs:label ?genreLabel . FILTER(LANG(?genreLabel) = "id") }
+      OPTIONAL { ?site wdt:P50 ?penulisItem . ?penulisItem rdfs:label ?penulisLabel . FILTER(LANG(?penulisLabel) = "id") }
+      OPTIONAL { ?site wdt:P921 ?subjekItem . ?subjekItem rdfs:label ?subjekLabel . FILTER(LANG(?subjekLabel) = "id") }
+    `;
+  }
+
+  if (blok.includes("koleksi")) {
+    selectClause += `(GROUP_CONCAT(DISTINCT ?kolektorLabel; separator=", ") AS ?kolektorList) `;
+    whereClause += `OPTIONAL { ?site wdt:P195 ?kolektorItem . ?kolektorItem rdfs:label ?kolektorLabel . FILTER(LANG(?kolektorLabel) = "id") }`;
+  }
+
+  if (blok.includes("karya_fisik")) {
+    selectClause += `(SAMPLE(?penciptaLabel) AS ?pencipta) (SAMPLE(?panjangData) AS ?panjang) (SAMPLE(?lebarData) AS ?lebar) (SAMPLE(?tinggiData) AS ?tinggi) (GROUP_CONCAT(DISTINCT ?bahanLabel; separator=", ") AS ?bahanList) (GROUP_CONCAT(DISTINCT ?aksaraLabel; separator=", ") AS ?aksaraList) `;
+    whereClause += `
+      OPTIONAL { ?site wdt:P170 ?penciptaItem . ?penciptaItem rdfs:label ?penciptaLabel . FILTER(LANG(?penciptaLabel) = "id") }
+      OPTIONAL {
+        ?site p:P2043 ?pjgStmt . ?pjgStmt psv:P2043 ?pjgNode . ?pjgNode wikibase:quantityAmount ?pjgVal .
+        OPTIONAL { ?pjgNode wikibase:quantityUnit ?pjgUnitItem . ?pjgUnitItem rdfs:label ?pjgUnitLabel . FILTER(LANG(?pjgUnitLabel) = "id") }
+        BIND(CONCAT(STR(?pjgVal), "|", IF(BOUND(?pjgUnitLabel), ?pjgUnitLabel, "")) AS ?panjangData)
+      }
+      OPTIONAL {
+        ?site p:P2049 ?lbrStmt . ?lbrStmt psv:P2049 ?lbrNode . ?lbrNode wikibase:quantityAmount ?lbrVal .
+        OPTIONAL { ?lbrNode wikibase:quantityUnit ?lbrUnitItem . ?lbrUnitItem rdfs:label ?lbrUnitLabel . FILTER(LANG(?lbrUnitLabel) = "id") }
+        BIND(CONCAT(STR(?lbrVal), "|", IF(BOUND(?lbrUnitLabel), ?lbrUnitLabel, "")) AS ?lebarData)
+      }
+      OPTIONAL {
+        ?site p:P2048 ?tgStmt . ?tgStmt psv:P2048 ?tgNode . ?tgNode wikibase:quantityAmount ?tgVal .
+        OPTIONAL { ?tgNode wikibase:quantityUnit ?tgUnitItem . ?tgUnitItem rdfs:label ?tgUnitLabel . FILTER(LANG(?tgUnitLabel) = "id") }
+        BIND(CONCAT(STR(?tgVal), "|", IF(BOUND(?tgUnitLabel), ?tgUnitLabel, "")) AS ?tinggiData)
+      }
+      OPTIONAL { ?site wdt:P186 ?bahanItem . ?bahanItem rdfs:label ?bahanLabel . FILTER(LANG(?bahanLabel) = "id") }
+      OPTIONAL { ?site wdt:P282 ?aksaraItem . ?aksaraItem rdfs:label ?aksaraLabel . FILTER(LANG(?aksaraLabel) = "id") }
+    `;
+  }
+
+  if (blok.includes("media")) {
+    selectClause += `(GROUP_CONCAT(DISTINCT ?pemredLabel; separator=", ") AS ?pemredList) (GROUP_CONCAT(DISTINCT ?pendiriLabel; separator=", ") AS ?pendiriList) (SAMPLE(?penerbitLabel) AS ?penerbit) (SAMPLE(?berakhirData) AS ?berakhirPada) `;
+    whereClause += `
+      OPTIONAL { ?site wdt:P5769 ?pemredItem . ?pemredItem rdfs:label ?pemredLabel . FILTER(LANG(?pemredLabel) = "id") }
+      OPTIONAL { ?site wdt:P112 ?pendiriItem . ?pendiriItem rdfs:label ?pendiriLabel . FILTER(LANG(?pendiriLabel) = "id") }
+      OPTIONAL { ?site wdt:P123 ?penerbitItem . ?penerbitItem rdfs:label ?penerbitLabel . FILTER(LANG(?penerbitLabel) = "id") }
+      OPTIONAL {
+        ?site p:P582 ?berakhirStmt . ?berakhirStmt psv:P582 ?berakhirNode .
+        ?berakhirNode wikibase:timeValue ?berakhirVal ; wikibase:timePrecision ?berakhirPrec .
+        BIND(CONCAT(STR(?berakhirVal), "|", STR(?berakhirPrec)) AS ?berakhirData)
+      }
+    `;
+  }
+
+  if (blok.includes("resep")) {
+    selectClause += `(GROUP_CONCAT(DISTINCT ?bahanLabel; separator=", ") AS ?bahanList) (GROUP_CONCAT(DISTINCT ?caraLabel; separator=", ") AS ?caraList) (SAMPLE(?wikibooksUrl) AS ?wikibooks) `;
+    whereClause += `
+      OPTIONAL { ?site wdt:P186 ?bahanItem . ?bahanItem rdfs:label ?bahanLabel . FILTER(LANG(?bahanLabel) = "id") }
+      OPTIONAL { ?site wdt:P2079 ?caraItem . ?caraItem rdfs:label ?caraLabel . FILTER(LANG(?caraLabel) = "id") }
+      OPTIONAL { ?wikibooksUrl schema:about ?site ; schema:isPartOf <https://id.wikibooks.org/> . }
+    `;
+  }
+  
+  if (blok.includes("bahasa")) {
+    selectClause += `(SAMPLE(?penuturData) AS ?penutur) `;
+    whereClause += `OPTIONAL { ?site p:P1098 ?penuturStmt . ?penuturStmt ps:P1098 ?penuturVal . OPTIONAL { ?penuturStmt pq:P585 ?penuturDate . } BIND(CONCAT(STR(?penuturVal), "|", STR(YEAR(?penuturDate))) AS ?penuturData) }`;
+  }
+
+  if (blok.includes("tokoh")) {
+    selectClause += `(SAMPLE(?wafatData) AS ?tglWafat) (GROUP_CONCAT(DISTINCT ?kerjaLabel; separator=", ") AS ?pekerjaanList) (GROUP_CONCAT(DISTINCT ?ahliLabel; separator=", ") AS ?spesialisasiList) (GROUP_CONCAT(DISTINCT ?koleksiKaryaLabel; separator=", ") AS ?koleksiKaryaList) `;
+    whereClause += `
+      OPTIONAL { ?site p:P570 ?wafatStmt . ?wafatStmt psv:P570 ?wafatNode . ?wafatNode wikibase:timeValue ?wafatVal ; wikibase:timePrecision ?wafatPrec . BIND(CONCAT(STR(?wafatVal), "|", STR(?wafatPrec)) AS ?wafatData) }
+      OPTIONAL { ?site wdt:P106 ?kerjaItem . ?kerjaItem rdfs:label ?kerjaLabel . FILTER(LANG(?kerjaLabel) = "id") }
+      OPTIONAL { ?site wdt:P101 ?ahliItem . ?ahliItem rdfs:label ?ahliLabel . FILTER(LANG(?ahliLabel) = "id") }
+      OPTIONAL { ?site wdt:P6379 ?koleksiKaryaItem . ?koleksiKaryaItem rdfs:label ?koleksiKaryaLabel . FILTER(LANG(?koleksiKaryaLabel) = "id") }
+    `;
+  }
+
+  if (blok.includes("gunung")) {
+    selectClause += `(SAMPLE(?gunungLabel) AS ?pegunungan) `;
+    whereClause += `OPTIONAL { ?site wdt:P4552 ?gunungItem . ?gunungItem rdfs:label ?gunungLabel . FILTER(LANG(?gunungLabel) = "id") }`;
+  }
+  
+  if (blok.includes("korban")) {
+    selectClause += `(SAMPLE(?korbanVal) AS ?korban) `;
+    whereClause += `OPTIONAL { ?site wdt:P1120 ?korbanVal . }`;
+  }
+
+  return `${selectClause} WHERE { ${whereClause} BIND (SUBSTR(STR(?site), 32) AS ?siteQid) } GROUP BY ?siteQid`;
 }
 
 function populateImportantEventsData(qid) {
@@ -615,6 +956,107 @@ function renderDynamicDataInPanel(qid) {
       arsipContainer.insertAdjacentHTML('beforebegin', wikibooksHtml);
     }
   }
+}
+
+function generateRecordDetails(qid) {
+  let record = Records[qid];
+  let titleHtml = `<h1>${record.title}</h1>`;
+  let figureHtml = generateFigure(record.imageFilename, record.title);
+
+  if (record.imageFilename) {
+    figureHtml = figureHtml.replace('<figure class="', '<figure class="gambar-utama ');
+  }
+
+  let articleHtml;
+  if (record.articleTitle) {
+    articleHtml = '<div class="article main-text loading"><div class="loader"></div></div>';
+  } else {
+    let namaAmanURL = encodeURIComponent(record.title);
+    let gFormUrl = `https://docs.google.com/forms/d/e/1FAIpQLSeHMSn6cwcgbZ0xx1CJ5tGXDQacYgzRZUG51STByKUROWXgmg/viewform?usp=pp_url&entry.2138396049=${namaAmanURL}`;
+    articleHtml = `<div class="article main-text nodata"><p>${currentNamaKlaster} ini belum memiliki artikel. <a href="${gFormUrl}" target="_blank" rel="noopener noreferrer" class="sunting-linktambah">Tambahkan!</a></p></div>`;
+  }
+  
+  let wikiUrlUtama = `https://www.wikidata.org/wiki/${qid}`;
+  let tautanSuntingRingkasan = `<a href="${wikiUrlUtama}" target="_blank" class="sunting-link" title="Sunting data di Wikidata" aria-label="Sunting data di Wikidata"></a>`;
+
+  let designationsHtml = `<h2 style="margin-top:10px;display: flex;align-items: flex-start; justify-content: space-between;">
+                            <div><span id="header-text-${qid}" style="margin-right:7px;">Informasi</span>${tautanSuntingRingkasan}</div>
+                         </h2>`;
+
+  designationsHtml += '<ul class="designations">';
+
+  let arrayProvinsi = Object.values(record.designations);
+  let isTidakSpesifik = arrayProvinsi.includes('Wilayah Lainnya/Tidak Spesifik') || arrayProvinsi.length === 0;
+  let spesifik = record.lokasiSpesifik; 
+  if (spesifik === 'Wilayah Lainnya/Tidak Spesifik') spesifik = null;
+  let namaLokasi = '';
+
+  if (isTidakSpesifik) {
+    if (spesifik) {
+      namaLokasi = spesifik;
+    } else {
+      namaLokasi = 'Belum ada data';
+    }
+  } else {
+    let arrayProvinsiBersih = arrayProvinsi.filter(p => p !== 'Wilayah Lainnya/Tidak Spesifik');
+    let teksDaftarProvinsi = arrayProvinsiBersih.join(', '); 
+    
+    if (spesifik && !arrayProvinsiBersih.map(p => p.toLowerCase()).includes(spesifik.toLowerCase())) {
+      namaLokasi = `${spesifik}, ${teksDaftarProvinsi}`; 
+    } else {
+      namaLokasi = teksDaftarProvinsi;
+    }
+  }
+
+  // ==========================================
+  // LOGIKA 'TERLETAK' & 'DIDIRIKAN' (DATA-DRIVEN)
+  // ==========================================
+  let aturan = KategoriAturan[currentIdKlaster] || KategoriAturan['universal'];
+  
+  let prefixLokasi = aturan.prefixLokasi;
+  let prefixTahun = aturan.prefixTahun;
+  let showTahun = (aturan.prefixTahun !== null) && (currentKategoriUtama !== 'alam'); 
+  
+  if (currentKategoriUtama === 'alam' && currentIdKlaster === 'bahasa') showTahun = false;
+
+  let infoLokasiHtml = '';
+  if (record.lat && record.lon) {
+    let mapsUrl = `https://www.google.com/maps?q=${record.lat},${record.lon}`;
+    infoLokasiHtml = `<p class="koordinat-link">${prefixLokasi}: <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" title="Buka di Google Maps">${namaLokasi}</a></p>`;
+  } else {
+    infoLokasiHtml = 
+      `<p class="koordinat-link">${prefixLokasi}: ${namaLokasi}</p>` +
+      `<p>Koordinat: <span style="font-style: italic; color: #888;">Data belum tersedia</span></p>`;
+  }
+
+  let infoTahunHtml = '';
+  if (showTahun) {
+    if (record.tahunBerdiri) {
+      infoTahunHtml = `<p>${prefixTahun}: ${record.tahunBerdiri}</p>`;
+    } else {
+      infoTahunHtml = `<p>${prefixTahun}: <span style="font-style: italic; color: #888;">Data belum tersedia</span></p>`;
+    }
+  }
+
+  let eventsHtmlPlaceholder = `
+   <div id="events-container-${qid}" class="loading">
+     <div class="loader" style="width: 20px; height: 20px; border-width: 2px; margin-top: 2px;"></div>
+   </div>`;
+
+  designationsHtml += '<li>' + infoLokasiHtml + infoTahunHtml + eventsHtmlPlaceholder + '</li></ul>';
+  let arsipHtml = `<div id="arsip-container-${qid}" class="loading"><div class="loader" style="width: 20px; height: 20px; border-width: 2px; margin-top: 8px;"></div></div>`;
+
+  let panelElem = document.createElement('div');
+  
+  if (currentNamaKlaster === 'Tempat lahir tokoh') {
+    panelElem.classList.add('mode-tokoh');
+  }
+  
+  panelElem.innerHTML = titleHtml + figureHtml + articleHtml + designationsHtml + arsipHtml;
+  record.panelElem = panelElem;
+
+  if (record.articleTitle) displayArticleExtract(record.articleTitle, panelElem.querySelector('.article'));
+  queryOsm(qid);
 }
 
 function populateProvinceIndex() {
@@ -935,22 +1377,22 @@ function applyIntersectionFilter(preventZoom = false) {
     }
 
   let matchUsia = true;
-if (currentUsiaFilter !== 'all') {                 // ganti dari .startsWith('usia_')
-  if (record.rawTahunBerdiri) {
-    let tahunBangunan = parseInt(record.rawTahunBerdiri.substring(0, 4));
-    let [tipeFilter, umurStr] = currentUsiaFilter.split('_');
-    let batasUmur = parseInt(umurStr);
-    let batasTahun = new Date().getFullYear() - batasUmur;
+  if (currentUsiaFilter !== 'all') {
+    if (record.rawTahunBerdiri) {
+      let tahunBangunan = parseInt(record.rawTahunBerdiri.substring(0, 4));
+      let [tipeFilter, umurStr] = currentUsiaFilter.split('_');
+      let batasUmur = parseInt(umurStr);
+      let batasTahun = new Date().getFullYear() - batasUmur;
 
-    if (tipeFilter === 'muda') {
-      matchUsia = tahunBangunan > batasTahun;      // lebih muda dari X tahun
+      if (tipeFilter === 'muda') {
+        matchUsia = tahunBangunan > batasTahun;
+      } else {
+        matchUsia = tahunBangunan <= batasTahun;
+      }
     } else {
-      matchUsia = tahunBangunan <= batasTahun;     // perilaku lama: lebih tua dari X tahun
+      matchUsia = false; 
     }
-  } else {
-    matchUsia = false; 
   }
-}
     
     return matchRegion && matchFeature && matchSearch && matchUsia;
 
@@ -995,287 +1437,6 @@ if (currentUsiaFilter !== 'all') {                 // ganti dari .startsWith('us
     
     renderTimeoutToken = null; 
   }, 150); 
-}
-
-function generateRecordDetails(qid) {
-  let record = Records[qid];
-  let titleHtml = `<h1>${record.title}</h1>`;
-  let figureHtml = generateFigure(record.imageFilename, record.title);
-
-  if (record.imageFilename) {
-    figureHtml = figureHtml.replace('<figure class="', '<figure class="gambar-utama ');
-  }
-
-  let articleHtml;
-  if (record.articleTitle) {
-    articleHtml = '<div class="article main-text loading"><div class="loader"></div></div>';
-  } else {
-    let namaAmanURL = encodeURIComponent(record.title);
-    let gFormUrl = `https://docs.google.com/forms/d/e/1FAIpQLSeHMSn6cwcgbZ0xx1CJ5tGXDQacYgzRZUG51STByKUROWXgmg/viewform?usp=pp_url&entry.2138396049=${namaAmanURL}`;
-    articleHtml = `<div class="article main-text nodata"><p>${currentNamaKlaster} ini belum memiliki artikel. <a href="${gFormUrl}" target="_blank" rel="noopener noreferrer" class="sunting-linktambah">Tambahkan!</a></p></div>`;
-  }
-  
-  let wikiUrlUtama = `https://www.wikidata.org/wiki/${qid}`;
-  let tautanSuntingRingkasan = `<a href="${wikiUrlUtama}" target="_blank" class="sunting-link" title="Sunting data di Wikidata" aria-label="Sunting data di Wikidata"></a>`;
-
-  let designationsHtml = `<h2 style="margin-top:10px;display: flex;align-items: flex-start; justify-content: space-between;">
-                            <div><span id="header-text-${qid}" style="margin-right:7px;">Informasi</span>${tautanSuntingRingkasan}</div>
-                         </h2>`;
-
-  designationsHtml += '<ul class="designations">';
-
-  let arrayProvinsi = Object.values(record.designations);
-  let isTidakSpesifik = arrayProvinsi.includes('Wilayah Lainnya/Tidak Spesifik') || arrayProvinsi.length === 0;
-  let spesifik = record.lokasiSpesifik; 
-  if (spesifik === 'Wilayah Lainnya/Tidak Spesifik') spesifik = null;
-  let namaLokasi = '';
-
-  if (isTidakSpesifik) {
-    if (spesifik) {
-      namaLokasi = spesifik;
-    } else {
-      namaLokasi = 'Belum ada data';
-    }
-  } else {
-    let arrayProvinsiBersih = arrayProvinsi.filter(p => p !== 'Wilayah Lainnya/Tidak Spesifik');
-    let teksDaftarProvinsi = arrayProvinsiBersih.join(', '); 
-    
-    if (spesifik && !arrayProvinsiBersih.map(p => p.toLowerCase()).includes(spesifik.toLowerCase())) {
-      namaLokasi = `${spesifik}, ${teksDaftarProvinsi}`; 
-    } else {
-      namaLokasi = teksDaftarProvinsi;
-    }
-  }
-
-// ==========================================
-  // LOGIKA 'TERLETAK' & 'DIDIRIKAN' (DATA-DRIVEN)
-  // ==========================================
-  let aturan = KategoriAturan[currentIdKlaster] || KategoriAturan['universal'];
-  
-  let prefixLokasi = aturan.prefixLokasi;
-  let prefixTahun = aturan.prefixTahun;
-  let showTahun = (aturan.prefixTahun !== null) && (currentKategoriUtama !== 'alam'); 
-  
-  // Penyesuaian khusus untuk beberapa kategori alam jika diperlukan
-  if (currentKategoriUtama === 'alam' && currentIdKlaster === 'bahasa') showTahun = false;
-
-  let infoLokasiHtml = '';
-  if (record.lat && record.lon) {
-    let mapsUrl = `https://www.google.com/maps?q=${record.lat},${record.lon}`;
-    infoLokasiHtml = `<p class="koordinat-link">${prefixLokasi}: <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" title="Buka di Google Maps">${namaLokasi}</a></p>`;
-  } else {
-    infoLokasiHtml = 
-      `<p class="koordinat-link">${prefixLokasi}: ${namaLokasi}</p>` +
-      `<p>Koordinat: <span style="font-style: italic; color: #888;">Data belum tersedia</span></p>`;
-  }
-
-  let infoTahunHtml = '';
-  if (showTahun) {
-    if (record.tahunBerdiri) {
-      infoTahunHtml = `<p>${prefixTahun}: ${record.tahunBerdiri}</p>`;
-    } else {
-      infoTahunHtml = `<p>${prefixTahun}: <span style="font-style: italic; color: #888;">Data belum tersedia</span></p>`;
-    }
-  }
-
-  let eventsHtmlPlaceholder = `
-   <div id="events-container-${qid}" class="loading">
-     <div class="loader" style="width: 20px; height: 20px; border-width: 2px; margin-top: 2px;"></div>
-   </div>`;
-
-  designationsHtml += '<li>' + infoLokasiHtml + infoTahunHtml + eventsHtmlPlaceholder + '</li></ul>';
-  let arsipHtml = `<div id="arsip-container-${qid}" class="loading"><div class="loader" style="width: 20px; height: 20px; border-width: 2px; margin-top: 8px;"></div></div>`;
-
-  let panelElem = document.createElement('div');
-  
-  if (currentNamaKlaster === 'Tempat lahir tokoh') {
-    panelElem.classList.add('mode-tokoh');
-  }
-  
-  panelElem.innerHTML = titleHtml + figureHtml + articleHtml + designationsHtml + arsipHtml;
-  record.panelElem = panelElem;
-
-  if (record.articleTitle) displayArticleExtract(record.articleTitle, panelElem.querySelector('.article'));
-  queryOsm(qid);
-}
-
-function populateHistoricalImagesData(qid) {
-  let record = Records[qid];
-  let queryStr = getSparqlQuery5(qid); 
-
-  record.vicinityImages = [];
-  record.pastImage = undefined;
-  record.interiorImage = undefined; 
-  record.commonsCat = undefined; 
-
-  return queryWdqsThenProcess(
-    queryStr,
-    function(result) {
-      if ('vicinityImage' in result) {
-        let filename = extractImageFilename(result.vicinityImage);
-        let captionText = result.vicinityCaption ? result.vicinityCaption.value : '';
-        
-        let isDuplicate = record.vicinityImages.some(img => img.file === filename);
-        if (!isDuplicate) {
-          record.vicinityImages.push({ file: filename, caption: captionText });
-        }
-      }
-      
-      if ('pastImage' in result) {
-        if (!record.pastImage) { 
-          let filename = extractImageFilename(result.pastImage);
-          let captionText = result.pastCaption ? result.pastCaption.value : '';
-          record.pastImage = { file: filename, caption: captionText };
-        }
-      }
-
-      if ('interiorImage' in result) {
-        if (!record.interiorImage) { 
-          let filename = extractImageFilename(result.interiorImage);
-          let captionText = result.interiorCaption ? result.interiorCaption.value : '';
-          record.interiorImage = { file: filename, caption: captionText };
-        }
-      }
-      
-      if ('commonsCat' in result) {
-        record.commonsCat = result.commonsCat.value;
-      }
-    },
-    function() {
-      renderHistoricalImagesInPanel(qid);
-    }
-    ).catch(error => {
-    console.warn("Gagal menarik foto arsip (offline).", error);
-    let record = Records[qid];
-    record._gagalOffline = true; 
-    
-    if (record.panelElem) {
-      let arsipContainer = record.panelElem.querySelector(`#arsip-container-${qid}`);
-      if (arsipContainer) arsipContainer.remove(); 
-    }
-  });
-}
-
-function renderHistoricalImagesInPanel(qid) {
-  let record = Records[qid];
-  
-  if (!record.panelElem) return;
-  let container = record.panelElem.querySelector(`#arsip-container-${qid}`);
-  if (!container) return; 
-
-  let html = '';
-  
-  function buildImageBlock(imgObj, teksPengganti) {
-    let block = '<div class="arsip-block" style="overflow: hidden;">';
-    block += generateFigure(imgObj.file);
-    if (imgObj.caption && imgObj.caption.trim() !== '') {
-      block += `<div class="article main-text"><p>${imgObj.caption}</p></div>`;
-    } else {
-      block += `<div class="article main-text nodata"><p>${teksPengganti}</p></div>`;
-    }
-    block += '</div>';
-    return block;
-  }
-
-  if (record.pastImage) {
-    html += buildImageBlock(record.pastImage, 'Suasana/bentuk/tampilan sebelumnya');
-  }
-
-  if (record.interiorImage) {
-    html += buildImageBlock(record.interiorImage, 'Pemandangan di dalam');
-  }
-  
-  if (record.vicinityImages && record.vicinityImages.length > 0) {
-    record.vicinityImages.forEach(imgObj => {
-      html += buildImageBlock(imgObj, 'Objek di sekitar');
-    });
-  }
-
-  if (record.commonsCat) {
-    html += '<h2 style="margin-top:10px; margin-bottom: 7px;">Galeri lainnya</h2>';
-    html += 
-      '<p class="wikipedia-link" style="margin-bottom: 0;">' +
-        `<a href="https://commons.wikimedia.org/wiki/Category:${encodeURIComponent(record.commonsCat)}" target="_blank">` +
-          '<img src="img/wikicommons_tiny_logo.png" alt="" />' +
-          '<span>Lihat di Wikimedia Commons</span>' +
-        '</a>' +
-      '</p>';
-  }
-
-  if (html !== '') {
-    let wikiUrlGaleri = `https://www.wikidata.org/wiki/${qid}#P18`;
-    let tautanSuntingGaleri = `<a href="${wikiUrlGaleri}" target="_blank" class="sunting-link" title="Sunting data galeri di Wikidata" aria-label="Sunting data galeri di Wikidata"></a>`;
-    
-    let judulGaleriUtama = '';
-    if (record.pastImage || record.interiorImage || (record.vicinityImages && record.vicinityImages.length > 0)) {
-      judulGaleriUtama = `<h2 style="margin-top:10px;margin-bottom:10px;">Galeri ${tautanSuntingGaleri}</h2>`;
-    }
-    
-    container.innerHTML = judulGaleriUtama + html;
-    container.classList.remove('loading');
-  } else {
-    container.innerHTML = '';
-    container.classList.remove('loading');
-    container.style.display = 'none';
-  }
-}
-
-function displayArticleExtract(title, elem) {
-  let url = new URL('https://id.wikipedia.org/w/api.php');
-  let params = {
-    action: 'query', format: 'json', prop: 'extracts',
-    exintro: 1, redirects: true, titles: title, origin: '*' 
-  };
-  Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-
-  fetch(url, { signal: globalFetchController.signal })
-    .then(response => {
-      if (!response.ok) throw new Error('Koneksi ke server Wikipedia gagal');
-      return response.json();
-    })
-    .then(data => {
-      if (!data.query || !data.query.pages) {
-        throw new Error('Struktur data Wikipedia tidak ditemukan');
-      }
-
-      let rawExtract = Object.values(data.query.pages)[0].extract || '';
-      
-      let kumpulanParagraf = rawExtract.match(/<p[^>]*>[\s\S]+?<\/p>/g);
-      let paragrafPilihan = kumpulanParagraf ? kumpulanParagraf.find(text => text.length > 50) : null;
-
-      if (paragrafPilihan) {
-        paragrafPilihan = paragrafPilihan.replace(/^<p[^>]*>(\s|<br\s*\/?>| )*/i, '<p>');
-        paragrafPilihan = paragrafPilihan.replace(/<span[^>]*>[^<]*code:\s*[a-z\-]+\s*is deprecated[^<]*<\/span>/gi, '');
-        paragrafPilihan = paragrafPilihan.replace(/<[^>]*>[^<]*(is deprecated|Lua error|Script error)[^<]*<\/[^>]*>/gi, '');
-        paragrafPilihan = paragrafPilihan.replace(/code:\s*[a-z\-]+\s*is deprecated/gi, '');
-      } else {
-        paragrafPilihan = '<p>Ringkasan artikel belum memadai.</p>'; 
-      }
-
-      if (elem) {
-        elem.innerHTML =
-          paragrafPilihan +
-          '<p class="wikipedia-link">' +
-            `<a href="https://id.wikipedia.org/wiki/${encodeURIComponent(title)}" target="_blank">` +
-              '<img src="img/wikipedia_tiny_logo.png" alt="" />' +
-              '<span>Baca selengkapnya di Wikipedia</span>' +
-            '</a>' +
-          '</p>';
-          
-        elem.classList.remove('loading');
-      }
-    })
-    .catch(error => {
-      if (error.name === 'AbortError') {
-        console.log('Penarikan Wikipedia dibatalkan (reset).');
-        return;
-      }
-      console.error('Gagal memuat artikel Wikipedia:', error);
-      if (elem) {
-        elem.innerHTML = '<p class="nodata" style="color:#cc0000; margin-top:10px;">Gagal memuat ringkasan artikel. Periksa koneksi internet Anda.</p>';
-        elem.classList.remove('loading');
-      }
-    });
 }
 
 function renderNextChunk() {
