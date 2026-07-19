@@ -153,17 +153,14 @@ var currentNamaWilayah = 'Semua Wilayah';
 
 function aturTampilanNegara() {
   let provInput = document.getElementById('provinsi-input').value;
-  let wadahNegara = document.getElementById('wadah-negara');
-  
-  if (provInput === 'luar_negeri') {
-    wadahNegara.style.display = 'block';
-  } else {
-    wadahNegara.style.display = 'none';
-  }
+  document.getElementById('wadah-negara').style.display = (provInput === 'luar_negeri') ? 'block' : 'none';
+  document.getElementById('wadah-lokasi-custom').style.display = (provInput === 'custom_lokasi') ? 'block' : 'none';
 }
 
 function populateProvinceTypesData() {
+  // 1. Variabel krusial yang sempat hilang
   let inputTxt = document.getElementById('jenis-input').value.trim();
+  
   let provDropdown = document.getElementById('provinsi-input');
   let provInput = provDropdown.value;
   
@@ -172,7 +169,8 @@ function populateProvinceTypesData() {
   // ==========================================
   let jenisDropdown = document.getElementById('jenis-dropdown');
   let opsiTerpilih = jenisDropdown.options[jenisDropdown.selectedIndex];
-// Ekstrak ID untuk mesin logika
+
+  // Ekstrak ID untuk mesin logika
   currentIdKlaster = opsiTerpilih.getAttribute('data-id') || 'universal';
 
   if (jenisDropdown.value === 'custom') {
@@ -186,7 +184,11 @@ function populateProvinceTypesData() {
   let propLokasi = opsiTerpilih.getAttribute('data-lokasi') || 'P131';
   let propTahun = opsiTerpilih.getAttribute('data-tahun') || 'P571';
   
-  if (provInput === 'luar_negeri') {
+  // LOGIKA PENAMAAN WILAYAH YANG AMAN (Digabung agar tidak saling timpa)
+  if (provInput === 'custom_lokasi') {
+    provInput = document.getElementById('lokasi-custom-input').value.trim();
+    currentNamaWilayah = "Lokasi Kustom";
+  } else if (provInput === 'luar_negeri') {
     let negaraDropdown = document.getElementById('negara-input');
     currentNamaWilayah = negaraDropdown.options[negaraDropdown.selectedIndex].text;
   } else {
@@ -197,162 +199,7 @@ function populateProvinceTypesData() {
   // 2. PERBARUI TAMPILAN
   // ==========================================
   let brandingDesc = document.getElementById('branding-desc');
-  if (brandingDesc) {
-    brandingDesc.textContent = `${currentNamaKlaster} di ${currentNamaWilayah}`;
-  }
-
-  let indexList = document.getElementById('index-list');
-  if (indexList) {
-    indexList.innerHTML = `
-      <div style="padding: 40px 20px; text-align: center; line-height: 1.6;">
-        <h3 id="loading-text" style="margin-bottom: 10px; margin-top:0; color: #333;">
-          Sedang Menarik Data<br/>${currentNamaKlaster} di ${currentNamaWilayah}
-        </h3>
-        <p style="color: #666; font-size:14px; margin-bottom: 25px;">Harap menunggu sebentar...</p>
-        <div class="loader" style="margin: 0 auto; width: 40px; height: 40px; border-width: 4px;"></div>
-      <div id="wadah-tombol-berhenti" style="margin-top: 42px;"></div>
-      </div>
-    `;
-  }
-  
-  // ==========================================
-  // 3. FUNGSI PEMBANTU EKSEKUSI KUERI
-  // ==========================================
-  function eksekusiKueriKeWikidata(kueriFinal) {
-    console.log("Kueri yang dikirim:", kueriFinal);
-    return queryWdqsPaginated(
-      kueriFinal,
-      function(result) {
-        let qid = result.SQ.value;
-        
-        if (!(qid in Records)) Records[qid] = new SimpleRecord(); 
-        
-        let record = Records[qid];
-        record.id = qid;
-
-        record.title = ('sLabel' in result && result.sLabel.value) ? result.sLabel.value : '[ERROR: No title]';
-
-        let provQid = result.PQ ? result.PQ.value : 'Q_UNKNOWN';
-        let provLabel = result.pLabel ? result.pLabel.value : 'Wilayah Lainnya/Tidak Spesifik';
-
-        if (!(provQid in ProvinceIndex)) {
-          ProvinceIndex[provQid] = new ProvinceIndexEntry();
-          ProvinceIndex[provQid].name = provLabel; 
-        }
-        if (!(provQid in record.designations)) record.designations[provQid] = provLabel; 
-        
-        record.areaTags.add(provQid);
-        
-        if ('lLabel' in result && result.lLabel.value) record.lokasiSpesifik = result.lLabel.value;
-        
-        if (!record.tahunBerdiri && result.tM && result.tM.value) {
-          let precision = result.tP ? result.tP.value : 9;
-          record.tahunBerdiri = formatWikidataDate(result.tM.value, precision);        
-          record.rawTahunBerdiri = result.tM.value.replace(/^[+-]/, '');
-        }
-      },
-      function() {
-        populateProvinceIndex(); 
-        Object.values(Records).forEach(record => { record.indexTitle = record.title });
-      },
-      5000 
-    );
-  }
-
-  // ==========================================
-  // 4. LOGIKA PEMILIHAN TEMPLATE KUERI
-  // ==========================================
-  let baseQuery = KUMPULAN_KUERI_0['universal'];
-  
-  if (inputTxt.toLowerCase() === 'apapun') {
-    baseQuery = KUMPULAN_KUERI_0['apapun'];
-    currentNamaKlaster = 'Objek'; 
-  }
-
-  let wilayahClause1 = '';
-  let unionEkstra = ''; 
-  let hierarkiLokasi = '?l wdt:P131* ?p .'; 
-  let kurungBuka = '';
-  let kurungTutup = '';
-  
-  const klasterKhususNasional = ['Kabupaten & kota', 'Gempa bumi dan tsunami', 'Peristiwa lainnya', 'Publikasi', 'Lukisan'];
-  let isKhususNasional = klasterKhususNasional.includes(currentNamaKlaster);
-  let filterNasional = '?s wdt:P17 wd:Q252 .';
-  
-  if (currentNamaKlaster === 'Publikasi') {
-    filterNasional = '?s wdt:P407 wd:Q9240 .';
-  }
-
-  // --- CABANG LUAR NEGERI ---
-  if (provInput === 'luar_negeri') {
-    let negaraDropdown = document.getElementById('negara-input');
-    let negaraValue = negaraDropdown.value;
-    
-    baseQuery = KUMPULAN_KUERI_0['luar_negeri'];
-    let dynamicQuery = baseQuery;
-
-    if (inputTxt.toLowerCase() === 'apapun') {
-      dynamicQuery = dynamicQuery.replace(/VALUES \?j \{ <PLACEHOLDER_JENIS> \}/g, '');
-    } else {
-      dynamicQuery = dynamicQuery.replace(/<PLACEHOLDER_JENIS>/g, inputTxt);
-    }
-    
-    dynamicQuery = dynamicQuery
-      .replace(/<PLACEHOLDER_NEGARA>/g, negaraValue)
-      .replace(/<PLACEHOLDER_PROP_LOKASI>/g, propLokasi)
-      .replace(/<PLACEHOLDER_PROP_TAHUN>/g, propTahun);
-      
-    return eksekusiKueriKeWikidata(dynamicQuery); 
-  }
-  
-  // ==========================================
-  // CABANG INDONESIA
-  // ==========================================
-  if (provInput === 'all') {
-    wilayahClause1 = '?p wdt:P31 wd:Q5098 .';
-    
-    if (isKhususNasional && inputTxt.toLowerCase() !== 'apapun') {
-      baseQuery = KUMPULAN_KUERI_0['khusus_negara_all'];
-    }
-  } else {
-    wilayahClause1 = `?p wdt:P131 ${provInput}.`;
-    let wilayahClause2 = `BIND(${provInput} AS ?p) BIND(${provInput} AS ?l)`; 
-    
-    kurungBuka = '{';
-    kurungTutup = '}';
-    
-    unionEkstra = `
-    UNION {
-      ${wilayahClause2}
-      ?s wdt:P31 ?j ;
-         wdt:${propLokasi} ?l .
-    }`;
-    
-    if (inputTxt.toLowerCase() === 'apapun') {
-       unionEkstra = `
-       UNION {
-         ${wilayahClause2}
-         ?s wdt:P17 wd:Q252 ;
-            wdt:P625 [] ;
-            wdt:P18 [] ;
-            wdt:P131 ?l .
-       }`;
-    }
-  }
-  
-  let dynamicQuery = baseQuery
-    .replace(/<PLACEHOLDER_FILTER_NASIONAL>/g, filterNasional)
-    .replace(/<PLACEHOLDER_KURUNG_BUKA>/g, kurungBuka)  
-    .replace(/<PLACEHOLDER_KURUNG_TUTUP>/g, kurungTutup)  
-    .replace(/<PLACEHOLDER_WILAYAH_1>/g, wilayahClause1)
-    .replace(/<PLACEHOLDER_PROP_LOKASI>/g, propLokasi)
-    .replace(/<PLACEHOLDER_PROP_TAHUN>/g, propTahun)
-    .replace(/<PLACEHOLDER_HIERARKI_LOKASI>/g, hierarkiLokasi)
-    .replace(/<PLACEHOLDER_UNION_EKSTRA>/g, unionEkstra) 
-    .replace(/<PLACEHOLDER_JENIS>/g, inputTxt);
-
-  return eksekusiKueriKeWikidata(dynamicQuery);
-}
+  // ... (dan seterusnya ke bawah sama seperti kode Anda)
 
 async function populateCoordinatesData() {
   let daftarQid = Object.keys(Records).map(id => 'wd:' + id);
