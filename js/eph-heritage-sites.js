@@ -1,6 +1,38 @@
 'use strict';
 
 const CHUNK_SIZE = 35;
+// --- KAMUS KONFIGURASI KLASTER ---
+const KategoriAturan = {
+  "wilayah_admin": { prefixLokasi: "Provinsi", prefixTahun: "Hari jadi", blokSPARQL: ["wilayah"] },
+  "tokoh":         { prefixLokasi: "Tempat lahir", prefixTahun: "Lahir", blokSPARQL: ["tokoh"] },
+  "latar_karya":   { prefixLokasi: "Latar", prefixTahun: "Terbit perdana", blokSPARQL: ["karya", "karya_sastra"] },
+  "publikasi":     { prefixLokasi: "Tempat terbit", prefixTahun: "Terbit perdana", blokSPARQL: ["karya", "karya_sastra"] },
+  "media_massa":   { prefixLokasi: "Tempat terbit", prefixTahun: "Terbit perdana", blokSPARQL: ["karya", "media"] },
+  "lukisan":       { prefixLokasi: "Koleksi", prefixTahun: "Dilukis", blokSPARQL: ["karya", "koleksi", "karya_fisik"] },
+  "naskah":        { prefixLokasi: "Koleksi", prefixTahun: "Ditulis", blokSPARQL: ["karya", "koleksi", "karya_fisik"] },
+  "bencana":       { prefixLokasi: "Pusat kejadian/terdampak", prefixTahun: "Pada", blokSPARQL: ["korban", "bagian_dari"] },
+  "peristiwa":     { prefixLokasi: "Pusat kejadian/terdampak", prefixTahun: "Pada", blokSPARQL: ["korban", "bagian_dari"] },
+  "situs_arkeologi":{ prefixLokasi: "Letak", prefixTahun: "Era/periode", blokSPARQL: ["arkeologi", "karya_fisik", "bagian_dari"] },
+  "prasasti":      { prefixLokasi: "Lokasi sekarang", prefixTahun: "Tarikh", blokSPARQL: ["arkeologi", "karya", "koleksi", "karya_fisik", "bagian_dari"] },
+  "artefak":       { prefixLokasi: "Lokasi sekarang", prefixTahun: "Tarikh", blokSPARQL: ["arkeologi", "koleksi", "karya_fisik", "bagian_dari"] },
+  "bangunan":      { prefixLokasi: "Letak", prefixTahun: "Didirikan", blokSPARQL: ["bangunan"] },
+  "museum":        { prefixLokasi: "Letak", prefixTahun: "Didirikan", blokSPARQL: ["bangunan", "museum"] },
+  "stasiun":       { prefixLokasi: "Letak", prefixTahun: "Didirikan", blokSPARQL: ["bangunan", "stasiun"] },
+  "pulau":         { prefixLokasi: "Letak", prefixTahun: null, blokSPARQL: ["bagian_dari"] },
+  "gunung":        { prefixLokasi: "Letak", prefixTahun: null, blokSPARQL: ["gunung"] },
+  "hidangan":      { prefixLokasi: "Hidangan khas", prefixTahun: null, blokSPARQL: ["resep"] },
+  "pakaian":       { prefixLokasi: "Pakaian khas", prefixTahun: null, blokSPARQL: [] },
+  "tari":          { prefixLokasi: "Tari dan pertunjukan khas", prefixTahun: null, blokSPARQL: [] },
+  "ritual":        { prefixLokasi: "Ritual dan upacara khas", prefixTahun: null, blokSPARQL: [] },
+  "budaya_rakyat": { prefixLokasi: "Budaya rakyat khas", prefixTahun: null, blokSPARQL: [] },
+  "bahasa":        { prefixLokasi: "Wilayah penutur utama", prefixTahun: null, blokSPARQL: ["bahasa"] },
+  "alam":          { prefixLokasi: "Letak", prefixTahun: null, blokSPARQL: [] },
+  "universal":     { prefixLokasi: "Letak", prefixTahun: "Didirikan/Pada", blokSPARQL: [] },
+  "custom":        { prefixLokasi: "Letak", prefixTahun: "Tahun/Waktu", blokSPARQL: [] }
+};
+
+var currentIdKlaster = 'universal'; // Tambahkan variabel global baru ini
+
 var currentRenderIndex = 0;
 var currentFilteredRecords = [];
 var isFilterEventAttached = false; 
@@ -140,6 +172,8 @@ function populateProvinceTypesData() {
   // ==========================================
   let jenisDropdown = document.getElementById('jenis-dropdown');
   let opsiTerpilih = jenisDropdown.options[jenisDropdown.selectedIndex];
+// Ekstrak ID untuk mesin logika
+  currentIdKlaster = opsiTerpilih.getAttribute('data-id') || 'universal';
 
   if (jenisDropdown.value === 'custom') {
     currentNamaKlaster = 'Objek'; 
@@ -1166,53 +1200,17 @@ function generateRecordDetails(qid) {
     }
   }
 
+// ==========================================
+  // LOGIKA 'TERLETAK' & 'DIDIRIKAN' (DATA-DRIVEN)
   // ==========================================
-  // LOGIKA 'TERLETAK' & 'DIDIRIKAN' BERDASARKAN currentNamaKlaster
-  // (Pencocokan persis dengan Teks Option HTML)
-  // ==========================================
-  let prefixLokasi = 'Letak'; 
-  let showTahun = true; 
-  let prefixTahun = 'Didirikan';
-
-  if (['Kabupaten & kota'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Provinsi';
-    prefixTahun = 'Hari jadi';
-  } else if (['Tempat lahir tokoh'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Tempat lahir';
-    prefixTahun = 'Lahir';
-  } else if (['Latar karya sastra'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Latar';
-    prefixTahun = 'Terbit perdana';
-  } else if (['Publikasi', 'Media massa'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Tempat terbit';
-    prefixTahun = 'Terbit perdana';
-  } else if (['Lukisan'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Koleksi';
-    prefixTahun = 'Dilukis';
-  } else if (['Lontar', 'Naskah'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Koleksi';
-    prefixTahun = 'Ditulis';
-  } else if (['Gempa bumi dan tsunami', 'Peristiwa lainnya', 'Perang & konflik', 'Bencana lainnya'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Pusat kejadian/terdampak';
-    prefixTahun = 'Pada';
-  } else if (['Situs arkeologi lainnya'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Letak';
-    prefixTahun = 'Era/periode';
-  } else if (['Prasasti', 'Artefak'].includes(currentNamaKlaster)) {
-    prefixLokasi = 'Lokasi sekarang';
-    prefixTahun = 'Tarikh';
-  }
+  let aturan = KategoriAturan[currentIdKlaster] || KategoriAturan['universal'];
   
-  if (currentKategoriUtama === 'alam') {
-    showTahun = false;
-    if (['Bahasa'].includes(currentNamaKlaster)) {
-      prefixLokasi = 'Wilayah penutur utama';
-    } else if (['Hidangan', 'Pakaian', 'Tari dan pertunjukan', 'Ritual dan upacara', 'Budaya rakyat'].includes(currentNamaKlaster)) {
-      prefixLokasi = `${currentNamaKlaster} khas`;
-    } else {
-      prefixLokasi = 'Letak';
-    }
-  }
+  let prefixLokasi = aturan.prefixLokasi;
+  let prefixTahun = aturan.prefixTahun;
+  let showTahun = (aturan.prefixTahun !== null) && (currentKategoriUtama !== 'alam'); 
+  
+  // Penyesuaian khusus untuk beberapa kategori alam jika diperlukan
+  if (currentKategoriUtama === 'alam' && currentIdKlaster === 'bahasa') showTahun = false;
 
   let infoLokasiHtml = '';
   if (record.lat && record.lon) {
